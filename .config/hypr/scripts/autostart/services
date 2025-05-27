@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Wallpaper Engine
+# uwsm app -- hyprpaper & # started via systemctl service (uwsm)
+
+# Automounter for removeable media
+uwsm app -- udiskie &
+
+# Pyprland Daemon
+uwsm app -- pypr --debug /tmp/pypr.log &
+
+# Bar
+uwsm app -- waybar &
+
+# Notification Daemon
+uwsm app -- swaync &
+
+# OSD Window
+uwsm app -- swayosd-server &
+
+# Idle Daemon to screen lock
+# uwsm app -- hypridle & # started via systemctl service (uwsm)
+
+# Clipboard
+uwsm app -- wl-paste --watch cliphist store &
+
+# Polkit authentication
+# uwsm app -- /usr/lib/hyprpolkitagent/hyprpolkitagent & # started via systemctl service (uwsm)
+
+# Audio
+uwsm app -- easyeffects --gapplication-service &
+
+# Screen sharing and portals
+uwsm app -- "$HOME"/.config/hypr/scripts/portal &

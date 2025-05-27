@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Apps
+# spotify &
+# obsidian &
+
+# Terminal Apps
+kitty --class btop btop &
+kitty --class nvtop nvtop &
