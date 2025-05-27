@@ -9,29 +9,29 @@ lazy = true
 force_monitor = "eDP-1"
 
 [scratchpads.terminal]
-command = "kitty --class scratchpad-large"
+command = "foot -a scratchpad-large"
 lazy = true
 
 [scratchpads.yazi]
-command = "kitty --class scratchpad-large fish -c yazi"
+command = "foot -a scratchpad-large fish -c yazi"
 unfocus = "hide"
 hysteresis = 0.1
 lazy = true
 
 [scratchpads.btop]
-command = "kitty --class scratchpad-large btop"
+command = "foot -a scratchpad-large btop"
 lazy = true
 
 [scratchpads.nvtop]
-command = "kitty --class scratchpad-large nvtop"
+command = "foot -a scratchpad-large nvtop"
 lazy = true
 
 [scratchpads.topgrade-system]
-command = "kitty --class scratchpad-large fish -c 'up'"
+command = "foot -a scratchpad-large zsh -c 'up'"
 lazy = true
 
 [scratchpads.topgrade-all]
-command = "kitty --class scratchpad-large fish -c 'upall'"
+command = "foot -a scratchpad-large zsh -c 'upall'"
 lazy = true
 
 [scratchpads.bluetooth]
