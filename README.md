@@ -49,7 +49,9 @@ These packages form the absolute bedrock of your Arch Linux installation, handli
 
 This section covers essential tools for managing your system, shell, and basic hardware functionalities.
 
-### Shell & Command Line Enhancements
+### Terminal, Shell & Command Line Enhancements
+*   foot [pacman]
+*   tmux [pacman]
 *   zsh [pacman]
 *   zsh-completions [pacman]
 *   zsh-syntax-highlighting [pacman]
@@ -73,6 +75,7 @@ This section covers essential tools for managing your system, shell, and basic h
 *   ripgrep [pacman]
 *   fzf [pacman]
 *   vivid [pacman]
+*   whois [pacman]
 
 ### System Monitoring
 *   btop [pacman]
