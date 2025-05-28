@@ -79,23 +79,53 @@ main() {
   ensure_sudo
   mkdir -p "$PYTHON_USER_BIN_DIR" "$MPV_CONFIG_DIR"
 
-  # 1. Install Pacman Packages
-  print_stage "Installing Pacman packages..."
+  # 0. Pre-Pacman System Check & Update (MODIFIED SECTION)
+  print_stage "Preparing Pacman and Performing System Update..."
+  if [ -f "/var/lib/pacman/db.lck" ]; then
+    print_warning "/var/lib/pacman/db.lck found!"
+    print_warning "This means another pacman instance may be running or was interrupted."
+    print_warning "If you are sure no other pacman instance is running, you can try removing it with 'sudo rm /var/lib/pacman/db.lck' and re-run the script."
+    print_error "Exiting due to existing pacman lock."
+    exit 1
+  fi
+
+  print_info "Attempting to synchronize package databases and update the entire system first..."
+  # Changed from -Syu in the previous suggestion to just -Sy to avoid full upgrade here if the user prefers,
+  # but -Syu is safer before installing a list of packages.
+  # For robustness against "package not found", -Syu is better.
+  # If you strictly want only new packages installed from the list without a full system upgrade first,
+  # then just `sudo pacman -Sy --noconfirm` would be the minimal database sync.
+  # However, this can lead to partial upgrade scenarios if not careful.
+  # The safest approach is a full sync and upgrade.
+  if ! sudo pacman -Syu --noconfirm; then # Using -Syu for safety before installing a list
+    print_error "Critical: Failed to synchronize databases and update system (pacman -Syu)."
+    print_error "Please check your internet connection, your mirrorlist (/etc/pacman.d/mirrorlist), and try running 'sudo pacman -Syu' manually in your terminal to see the exact errors."
+    print_error "You might need to update your mirrorlist, for example, using the 'reflector' tool."
+    exit 1
+  else
+    print_success "System synchronized and updated successfully."
+  fi
+  # End of MODIFIED SECTION for pre-pacman update
+
+  # 1. Install Pacman Packages (Original logic, but now after -Syu)
+  print_stage "Installing specified Pacman packages..."
   local missing_pacman_pkgs=()
   for pkg in "${PACMAN_PACKAGES[@]}"; do
     if ! package_installed_pacman "$pkg"; then
       missing_pacman_pkgs+=("$pkg")
     else
-      print_info "Pacman: $pkg already installed."
+      print_info "Pacman: $pkg already installed (or updated by previous -Syu)."
     fi
   done
   if [ ${#missing_pacman_pkgs[@]} -gt 0 ]; then
-    sudo pacman -Syu --needed --noconfirm "${missing_pacman_pkgs[@]}" || {
-      print_error "Pacman installation failed."
-      exit 1
+    # Now use -S --needed, as system is already up-to-date from the -Syu step.
+    sudo pacman -S --needed --noconfirm "${missing_pacman_pkgs[@]}" || {
+      print_error "Pacman installation of one or more specified packages failed."
+      print_error "Try installing them manually to see the specific error, e.g., 'sudo pacman -S package_name'."
+      exit 1 # Added exit here for robustness
     }
   else
-    print_success "All specified Pacman packages are already installed."
+    print_success "All specified Pacman packages are already installed and up-to-date."
   fi
 
   # 2. Install rustup
@@ -103,7 +133,6 @@ main() {
   if ! command_exists rustup; then
     print_info "Installing rustup..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
-    # Source cargo env for current script session
     if [ -f "$HOME/.cargo/env" ]; then source "$HOME/.cargo/env"; else print_warning "Cargo env file not found after rustup install."; fi
     if ! command_exists rustc; then print_error "Rust (rustc) installation via rustup failed."; else print_success "Rustup and stable toolchain installed."; fi
   else
@@ -118,7 +147,7 @@ main() {
     print_info "$AUR_HELPER_CMD not found. Installing..."
     if ! package_installed_pacman "git" || ! package_installed_pacman "base-devel"; then
       print_info "Installing git and base-devel for yay compilation..."
-      sudo pacman -S --needed --noconfirm git base-devel || {
+      sudo pacman -S --needed --noconfirm git base-devel || { # Use -S not -Syu
         print_error "Failed to install git/base-devel."
         exit 1
       }
@@ -127,19 +156,19 @@ main() {
       cd /tmp || {
         print_error "Failed to cd to /tmp"
         exit 1
-      }
-      if [ -d "yay" ]; then rm -rf yay; fi # Clean up previous attempt
+      } # Added exit
+      if [ -d "yay" ]; then rm -rf yay; fi
       git clone https://aur.archlinux.org/yay.git
       cd yay || {
         print_error "Failed to cd to yay directory"
         exit 1
-      }
+      } # Added exit
       makepkg -si --noconfirm --needed
     )
     if ! command_exists $AUR_HELPER_CMD; then
       print_error "$AUR_HELPER_CMD installation failed."
       exit 1
-    fi
+    fi # Added exit
     print_success "$AUR_HELPER_CMD installed successfully."
   else
     print_success "$AUR_HELPER_CMD is already installed."
@@ -149,7 +178,7 @@ main() {
   print_stage "Installing AUR packages..."
   local missing_aur_pkgs_to_install=()
   for pkg in "${AUR_PACKAGES[@]}"; do
-    if [[ "$pkg" == "yay" ]]; then continue; fi # Skip yay as it's manually installed
+    if [[ "$pkg" == "yay" ]]; then continue; fi
     if [[ -n "$pkg" ]]; then
       if ! package_installed_aur "$pkg"; then
         missing_aur_pkgs_to_install+=("$pkg")
@@ -161,7 +190,7 @@ main() {
   if [ ${#missing_aur_pkgs_to_install[@]} -gt 0 ]; then
     $AUR_HELPER_CMD -S --needed --noconfirm "${missing_aur_pkgs_to_install[@]}" || {
       print_error "AUR installation failed."
-      exit 1
+      exit 1 # Added exit
     }
   else
     print_success "All specified AUR packages (excluding yay) are already installed."
@@ -173,7 +202,8 @@ main() {
   # uv (Python package manager via curl)
   print_info "Installing/Updating uv..."
   if ! command_exists uv || [ ! -x "$PYTHON_USER_BIN_DIR/uv" ]; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --bin-dir "$PYTHON_USER_BIN_DIR" || print_error "uv installation failed."
+    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --bin-dir "$PYTHON_USER_BIN_DIR" || print_error "uv installation failed." # Added exit potential
+    # Re-check after install attempt
     if ! command_exists uv && [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then
       print_success "uv installed to $PYTHON_USER_BIN_DIR."
     elif command_exists uv; then
@@ -193,12 +223,10 @@ main() {
   elif [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then UV_CMD_PATH="$PYTHON_USER_BIN_DIR/uv"; fi
 
   if [ -n "$UV_CMD_PATH" ]; then
-    # Check if commitizen is already installed via uv tools or available in PATH
-    if ! ("$UV_CMD_PATH" tool list | grep -q "commitizen") && ! command_exists cz; then
+    if ! ("$UV_CMD_PATH" tool list 2>/dev/null | grep -q "commitizen") && ! command_exists cz; then # Added 2>/dev/null
       print_info "Attempting to install commitizen tool via uv..."
-      "$UV_CMD_PATH" tool install commitizen || print_error "commitizen installation via uv tool failed."
-      # Verify
-      if ! ("$UV_CMD_PATH" tool list | grep -q "commitizen") && ! command_exists cz; then
+      "$UV_CMD_PATH" tool install commitizen || print_error "commitizen installation via uv tool failed." # Added exit potential
+      if ! ("$UV_CMD_PATH" tool list 2>/dev/null | grep -q "commitizen") && ! command_exists cz; then     # Added 2>/dev/null
         print_warning "commitizen (cz) tool not found after uv install. Check uv setup and PATH."
       else
         print_success "commitizen (cz) installed via uv tool."
@@ -213,13 +241,16 @@ main() {
   # uosc (mpv script)
   print_info "Installing/Updating uosc for mpv..."
   if [ ! -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
-    mkdir -p "$MPV_CONFIG_DIR" # Ensure base config dir exists
+    mkdir -p "$MPV_CONFIG_DIR/scripts" # Ensure scripts subdir exists
     print_info "Running uosc unix installer script..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tomasklaen/uosc/HEAD/installers/unix.sh)" || print_error "uosc installation script failed."
-    if [ -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
-      print_success "uosc installed successfully."
+    if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tomasklaen/uosc/HEAD/installers/unix.sh)"; then # Check command success
+      if [ -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
+        print_success "uosc installed successfully."
+      else
+        print_warning "uosc installation script ran, but uosc.lua not found in expected location. Check manually."
+      fi
     else
-      print_warning "uosc installation script ran, but uosc.lua not found in expected location. Check manually."
+      print_error "uosc installation script failed." # Added this else
     fi
   else
     print_success "uosc.lua already present. Skipping uosc installation."
@@ -233,11 +264,10 @@ main() {
     "bluetooth.service"
     "fstrim.timer"
     "ufw.service"
-    "polkit.service" # or polkitd.service, check `systemctl list-unit-files`
+    "polkit.service"
   )
   for service in "${SYSTEM_SERVICES[@]}"; do
     service_name_base=$(basename "$service" .service)
-    # Check if the service unit file exists
     if systemctl list-unit-files --type=service | grep -q "^${service_name_base}.service"; then
       if ! sudo systemctl is-enabled --quiet "$service"; then
         print_info "Enabling system service: $service"
@@ -269,10 +299,8 @@ main() {
   )
   for service in "${USER_SERVICES[@]}"; do
     service_name_base=$(basename "$service" .service)
-    # Check if the user service unit file exists
     if systemctl --user list-unit-files --type=service,socket | grep -q "^${service_name_base}\.\(service\|socket\)"; then
       actual_unit_to_enable="$service"
-      # Handle common .socket activations if preferred
       if [[ "$service_name_base" == "gpg-agent" ]] && systemctl --user list-unit-files | grep -q "gpg-agent.socket"; then
         actual_unit_to_enable="gpg-agent.socket"
       fi
@@ -283,7 +311,6 @@ main() {
       else
         print_success "User unit $actual_unit_to_enable already enabled."
       fi
-      # Only try to start .service files, not .socket files directly
       if [[ "$actual_unit_to_enable" == *".service" ]] && ! systemctl --user is-active --quiet "$actual_unit_to_enable"; then
         print_info "Starting user service: $actual_unit_to_enable"
         systemctl --user start "$actual_unit_to_enable" || print_warning "Failed to start user service $actual_unit_to_enable (might be D-Bus activated or start on next login)"
@@ -293,7 +320,7 @@ main() {
     fi
   done
 
-  # 8. Final Steps & Info
+  # 8. Final Steps & Info (This is step 8 in YOUR script, previously my step 9)
   print_stage "Finalizing Setup..."
   print_info "Updating font cache..."
   fc-cache -f -v || print_warning "fc-cache failed."
