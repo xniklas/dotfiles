@@ -1,7 +1,6 @@
 # Comprehensive Arch Linux Guide for a Modern Hyprland Workstation
 **HP Pavilion x360 14-cd0xxx | Intel CPU | Integrated Graphics | Hyprland | 2025**
 
-This document outlines a comprehensive package list and configuration strategy for setting up a stable, performant, and highly customized Arch Linux system with Hyprland. It prioritizes modern Wayland-native applications and leverages both official Arch repositories and the AUR (Arch User Repository) for a complete software ecosystem.
 
 ## ✨ Preliminary Considerations
 

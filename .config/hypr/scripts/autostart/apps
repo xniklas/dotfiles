@@ -5,5 +5,5 @@
 # obsidian &
 
 # Terminal Apps
-kitty --class btop btop &
-kitty --class nvtop nvtop &
+# foot -a btop btop &
+# foot -a nvtop nvtop &

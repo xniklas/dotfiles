@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+# yadm bootstrap script for Arch Linux Hyprland Workstation
+
+# --- Helper Functions ---
+print_stage() { echo -e "\n\033[1;36m==> $1\033[0m"; }
+print_info() { echo -e "\033[0;34mINFO: $1\033[0m"; }
+print_success() { echo -e "\033[0;32mSUCCESS: $1\033[0m"; }
+print_warning() { echo -e "\033[0;33mWARNING: $1\033[0m"; }
+print_error() { echo -e "\033[0;31mERROR: $1\033[0m"; }
+
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+package_installed_pacman() { pacman -Q "$1" >/dev/null 2>&1; }
+package_installed_aur() { pacman -Q "$1" >/dev/null 2>&1; }
+
+ensure_sudo() {
+  if [[ $EUID -ne 0 ]]; then
+    sudo -v
+    while true; do
+      sudo -n true
+      sleep 60
+      kill -0 "$$" || exit
+    done 2>/dev/null &
+    SUDO_KEEPALIVE_PID=$!
+    trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null' EXIT
+  fi
+}
+
+# --- Configuration ---
+AUR_HELPER_CMD="yay"
+PYTHON_USER_BIN_DIR="$HOME/.local/bin"
+MPV_CONFIG_DIR="$HOME/.config/mpv"
+export PATH="$PYTHON_USER_BIN_DIR:$HOME/.cargo/bin:$PATH"
+
+PACMAN_PACKAGES=(
+  "linux" "linux-zen" "fwupd"
+  "grub" "intel-ucode" "hyprland" "wayland" "wayland-protocols"
+  "mesa" "vulkan-intel" "intel-media-driver" "libva-intel-driver" "libva-utils"
+  "sddm" "polkit" "hyprland-polkit-agent"
+  "xdg-desktop-portal-hyprland" "xdg-desktop-portal-gtk"
+  "base-devel" "git"
+  "foot" "tmux" "zsh" "zsh-completions" "zsh-syntax-highlighting" "zsh-autosuggestions" "starship"
+  "networkmanager" "network-manager-applet" "gnome-keyring"
+  "bluez" "bluez-utils" "blueman" "brightnessctl" "udiskie"
+  "bat" "eza" "fd" "ripgrep" "fzf" "vivid" "whois"
+  "btop" "fastfetch"
+  "curl" "wget" "unzip" "zip" "tar" "unrar" "rsync" "p7zip" "ark"
+  "hyprpaper" "hyprlock" "hyprpicker" "hypridle" "swaync" "waybar"
+  "nwg-look" "kvantum" "qt5ct" "qt6ct"
+  "ttf-liberation" "ttf-dejavu" "noto-fonts" "noto-fonts-emoji" "noto-fonts-cjk"
+  "ttf-jetbrains-mono" "ttf-jetbrains-mono-nerd"
+  "grim" "slurp" "satty" "wl-clipboard" "cliphist"
+  "pipewire" "wireplumber" "pipewire-audio" "pipewire-pulse" "pipewire-alsa" "pipewire-jack" "lib32-pipewire"
+  "pavucontrol" "pamixer" "playerctl" "easyeffects" "qpwgraph" "cava"
+  "dolphin" "yazi" "ffmpegthumbnailer" "ffmpeg" "poppler" "imagemagick"
+  "libreoffice-fresh" "obsidian"
+  "neovim" "github-cli" "nodejs" "npm" "python" "go" "jdk-openjdk"
+  "mpv" "qimgv" "obs-studio"
+  "gparted" "wlr-randr" "kanshi" "uwsm"
+  "ufw" "gufw" "gnupg"
+)
+
+AUR_PACKAGES=(
+  "yay"
+  "waybar-update"
+  "rofi-wayland" "rofi-emoji"
+  "catppuccin-cursors-mocha"
+  "hyprshot"
+  "ueberzugpp"
+  "resvg"
+  "zen-browser-bin"
+  "vesktop-bin"
+  "visual-studio-code-bin"
+  "lazygit" "git-delta"
+  "swayosd-git"
+)
+
+# --- Script Body ---
+main() {
+  ensure_sudo
+  mkdir -p "$PYTHON_USER_BIN_DIR" "$MPV_CONFIG_DIR"
+
+  # 1. Install Pacman Packages
+  print_stage "Installing Pacman packages..."
+  local missing_pacman_pkgs=()
+  for pkg in "${PACMAN_PACKAGES[@]}"; do
+    if ! package_installed_pacman "$pkg"; then
+      missing_pacman_pkgs+=("$pkg")
+    else
+      print_info "Pacman: $pkg already installed."
+    fi
+  done
+  if [ ${#missing_pacman_pkgs[@]} -gt 0 ]; then
+    sudo pacman -Syu --needed --noconfirm "${missing_pacman_pkgs[@]}" || {
+      print_error "Pacman installation failed."
+      exit 1
+    }
+  else
+    print_success "All specified Pacman packages are already installed."
+  fi
+
+  # 2. Install rustup
+  print_stage "Installing/Updating rustup and Rust stable toolchain..."
+  if ! command_exists rustup; then
+    print_info "Installing rustup..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
+    # Source cargo env for current script session
+    if [ -f "$HOME/.cargo/env" ]; then source "$HOME/.cargo/env"; else print_warning "Cargo env file not found after rustup install."; fi
+    if ! command_exists rustc; then print_error "Rust (rustc) installation via rustup failed."; else print_success "Rustup and stable toolchain installed."; fi
+  else
+    print_info "rustup already installed. Ensuring stable toolchain is default..."
+    rustup default stable
+    print_success "Rust stable toolchain set as default."
+  fi
+
+  # 3. Install yay (AUR Helper)
+  print_stage "Installing AUR Helper (yay)..."
+  if ! command_exists $AUR_HELPER_CMD; then
+    print_info "$AUR_HELPER_CMD not found. Installing..."
+    if ! package_installed_pacman "git" || ! package_installed_pacman "base-devel"; then
+      print_info "Installing git and base-devel for yay compilation..."
+      sudo pacman -S --needed --noconfirm git base-devel || {
+        print_error "Failed to install git/base-devel."
+        exit 1
+      }
+    fi
+    (
+      cd /tmp || {
+        print_error "Failed to cd to /tmp"
+        exit 1
+      }
+      if [ -d "yay" ]; then rm -rf yay; fi # Clean up previous attempt
+      git clone https://aur.archlinux.org/yay.git
+      cd yay || {
+        print_error "Failed to cd to yay directory"
+        exit 1
+      }
+      makepkg -si --noconfirm --needed
+    )
+    if ! command_exists $AUR_HELPER_CMD; then
+      print_error "$AUR_HELPER_CMD installation failed."
+      exit 1
+    fi
+    print_success "$AUR_HELPER_CMD installed successfully."
+  else
+    print_success "$AUR_HELPER_CMD is already installed."
+  fi
+
+  # 4. Install AUR Packages (excluding yay itself)
+  print_stage "Installing AUR packages..."
+  local missing_aur_pkgs_to_install=()
+  for pkg in "${AUR_PACKAGES[@]}"; do
+    if [[ "$pkg" == "yay" ]]; then continue; fi # Skip yay as it's manually installed
+    if [[ -n "$pkg" ]]; then
+      if ! package_installed_aur "$pkg"; then
+        missing_aur_pkgs_to_install+=("$pkg")
+      else
+        print_info "AUR: $pkg already installed."
+      fi
+    fi
+  done
+  if [ ${#missing_aur_pkgs_to_install[@]} -gt 0 ]; then
+    $AUR_HELPER_CMD -S --needed --noconfirm "${missing_aur_pkgs_to_install[@]}" || {
+      print_error "AUR installation failed."
+      exit 1
+    }
+  else
+    print_success "All specified AUR packages (excluding yay) are already installed."
+  fi
+
+  # 5. Custom Installations
+  print_stage "Handling Custom Installations..."
+
+  # uv (Python package manager via curl)
+  print_info "Installing/Updating uv..."
+  if ! command_exists uv || [ ! -x "$PYTHON_USER_BIN_DIR/uv" ]; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --bin-dir "$PYTHON_USER_BIN_DIR" || print_error "uv installation failed."
+    if ! command_exists uv && [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then
+      print_success "uv installed to $PYTHON_USER_BIN_DIR."
+    elif command_exists uv; then
+      print_success "uv installed (found in PATH)."
+    else
+      print_warning "uv installation attempted, but 'uv' command might not be in current PATH immediately. It should be available in new shells."
+    fi
+  else
+    print_success "uv already installed."
+  fi
+
+  # commitizen (via uv)
+  print_info "Installing/Updating commitizen with uv..."
+  UV_CMD_PATH=""
+  if command_exists uv; then
+    UV_CMD_PATH="uv"
+  elif [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then UV_CMD_PATH="$PYTHON_USER_BIN_DIR/uv"; fi
+
+  if [ -n "$UV_CMD_PATH" ]; then
+    # Check if commitizen is already installed via uv tools or available in PATH
+    if ! ("$UV_CMD_PATH" tool list | grep -q "commitizen") && ! command_exists cz; then
+      print_info "Attempting to install commitizen tool via uv..."
+      "$UV_CMD_PATH" tool install commitizen || print_error "commitizen installation via uv tool failed."
+      # Verify
+      if ! ("$UV_CMD_PATH" tool list | grep -q "commitizen") && ! command_exists cz; then
+        print_warning "commitizen (cz) tool not found after uv install. Check uv setup and PATH."
+      else
+        print_success "commitizen (cz) installed via uv tool."
+      fi
+    else
+      print_success "commitizen (cz) already available (possibly via uv tool or PATH)."
+    fi
+  else
+    print_warning "uv not found. Skipping commitizen installation."
+  fi
+
+  # uosc (mpv script)
+  print_info "Installing/Updating uosc for mpv..."
+  if [ ! -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
+    mkdir -p "$MPV_CONFIG_DIR" # Ensure base config dir exists
+    print_info "Running uosc unix installer script..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tomasklaen/uosc/HEAD/installers/unix.sh)" || print_error "uosc installation script failed."
+    if [ -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
+      print_success "uosc installed successfully."
+    else
+      print_warning "uosc installation script ran, but uosc.lua not found in expected location. Check manually."
+    fi
+  else
+    print_success "uosc.lua already present. Skipping uosc installation."
+  fi
+
+  # 6. System Service Enablement
+  print_stage "Enabling System Services..."
+  SYSTEM_SERVICES=(
+    "sddm.service"
+    "NetworkManager.service"
+    "bluetooth.service"
+    "fstrim.timer"
+    "ufw.service"
+    "polkit.service" # or polkitd.service, check `systemctl list-unit-files`
+  )
+  for service in "${SYSTEM_SERVICES[@]}"; do
+    service_name_base=$(basename "$service" .service)
+    # Check if the service unit file exists
+    if systemctl list-unit-files --type=service | grep -q "^${service_name_base}.service"; then
+      if ! sudo systemctl is-enabled --quiet "$service"; then
+        print_info "Enabling system service: $service"
+        sudo systemctl enable "$service" || print_warning "Failed to enable $service"
+      else
+        print_success "System service $service already enabled."
+      fi
+      if [[ "$service" != "fstrim.timer" ]] && ! sudo systemctl is-active --quiet "$service"; then
+        print_info "Starting system service: $service"
+        sudo systemctl start "$service" || print_warning "Failed to start $service (might start on reboot or if already active)"
+      fi
+    else
+      print_warning "System service unit $service_name_base.service not found. Skipping."
+    fi
+  done
+
+  # 7. User Service Enablement
+  print_stage "Enabling User Services..."
+  USER_SERVICES=(
+    "pipewire.service"
+    "wireplumber.service"
+    "udiskie.service"
+    "kanshi.service"
+    "uwsm.service"
+    "hyprpolkitagent.service"
+    "hyprpaper.service"
+    "hypridle.service"
+    "gpg-agent.service"
+  )
+  for service in "${USER_SERVICES[@]}"; do
+    service_name_base=$(basename "$service" .service)
+    # Check if the user service unit file exists
+    if systemctl --user list-unit-files --type=service,socket | grep -q "^${service_name_base}\.\(service\|socket\)"; then
+      actual_unit_to_enable="$service"
+      # Handle common .socket activations if preferred
+      if [[ "$service_name_base" == "gpg-agent" ]] && systemctl --user list-unit-files | grep -q "gpg-agent.socket"; then
+        actual_unit_to_enable="gpg-agent.socket"
+      fi
+
+      if ! systemctl --user is-enabled --quiet "$actual_unit_to_enable"; then
+        print_info "Enabling user unit: $actual_unit_to_enable"
+        systemctl --user enable "$actual_unit_to_enable" || print_warning "Failed to enable user unit $actual_unit_to_enable"
+      else
+        print_success "User unit $actual_unit_to_enable already enabled."
+      fi
+      # Only try to start .service files, not .socket files directly
+      if [[ "$actual_unit_to_enable" == *".service" ]] && ! systemctl --user is-active --quiet "$actual_unit_to_enable"; then
+        print_info "Starting user service: $actual_unit_to_enable"
+        systemctl --user start "$actual_unit_to_enable" || print_warning "Failed to start user service $actual_unit_to_enable (might be D-Bus activated or start on next login)"
+      fi
+    else
+      print_warning "User unit for $service_name_base not found. Skipping. Ensure the package provides this service file."
+    fi
+  done
+
+  # 8. Final Steps & Info
+  print_stage "Finalizing Setup..."
+  print_info "Updating font cache..."
+  fc-cache -f -v || print_warning "fc-cache failed."
+
+  if [[ "$(basename "$SHELL")" != "zsh" ]]; then
+    print_warning "To set Zsh as your default shell, please run: chsh -s $(which zsh)"
+    print_warning "You will be prompted for your password. A logout/login is required for the change to take effect."
+  else
+    print_success "Zsh is already the default shell."
+  fi
+
+  print_info "To check for and apply firmware updates (recommended after a fresh install and periodically):"
+  print_info "1. sudo fwupdmgr refresh --force"
+  print_info "2. sudo fwupdmgr get-updates"
+  print_info "3. sudo fwupdmgr update (this may be interactive and require reboots)"
+
+  print_stage "Bootstrap script finished!"
+  print_warning "A reboot might be necessary for all changes to take full effect (kernel, services, audio fix, shell)."
+}
+
+main
