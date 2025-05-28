@@ -1,6 +1,10 @@
 # Comprehensive Arch Linux Guide for a Modern Hyprland Workstation
 **HP Pavilion x360 14-cd0xxx | Intel CPU | Integrated Graphics | Hyprland | 2025**
 
+# TODO
+- add multilib at the start of the script
+- add nvida, amd or intel gpu drivers as an option
+
 
 ## ✨ Preliminary Considerations
 

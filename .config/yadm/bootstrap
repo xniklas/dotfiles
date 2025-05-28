@@ -80,6 +80,20 @@ main() {
   ensure_sudo
   mkdir -p "$PYTHON_USER_BIN_DIR" "$MPV_CONFIG_DIR"
 
+  # Ensure multilib repository is enabled
+  print_stage "Checking and Enabling Multilib Repository..."
+  if grep -q "^#\[multilib\]" /etc/pacman.conf; then
+    print_info "Multilib repository is commented out. Enabling..."
+    sudo sed -i '/^#\[multilib\]/{N;s/#\[multilib\]\n#Include/\[multilib\]\nInclude/}' /etc/pacman.conf
+    print_info "Multilib enabled. Database will be synced in the next step."
+    # Force a database re-sync after this change if pacman -Syu is run next
+  elif ! grep -q "^\[multilib\]" /etc/pacman.conf; then
+    print_warning "Multilib section not found in /etc/pacman.conf in a recognizable format."
+    print_warning "Please ensure it's properly configured manually if lib32 packages are needed."
+  else
+    print_success "Multilib repository is already enabled."
+  fi
+
   # 0. Pre-Pacman System Check & Update (MODIFIED SECTION)
   print_stage "Preparing Pacman and Performing System Update..."
   if [ -f "/var/lib/pacman/db.lck" ]; then
