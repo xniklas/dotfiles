@@ -35,7 +35,7 @@ PACMAN_PACKAGES=(
   "linux" "linux-zen" "fwupd"
   "grub" "intel-ucode" "hyprland" "wayland" "wayland-protocols"
   "mesa" "vulkan-intel" "intel-media-driver" "libva-intel-driver" "libva-utils"
-  "sddm" "polkit" "hyprland-polkit-agent"
+  "sddm" "polkit" "hyprlandpolkitagent"
   "xdg-desktop-portal-hyprland" "xdg-desktop-portal-gtk"
   "base-devel" "git"
   "foot" "tmux" "zsh" "zsh-completions" "zsh-syntax-highlighting" "zsh-autosuggestions" "starship"
@@ -54,7 +54,7 @@ PACMAN_PACKAGES=(
   "dolphin" "yazi" "ffmpegthumbnailer" "ffmpeg" "poppler" "imagemagick"
   "libreoffice-fresh" "obsidian"
   "neovim" "github-cli" "nodejs" "npm" "python" "go" "jdk-openjdk"
-  "mpv" "qimgv" "obs-studio"
+  "mpv" "obs-studio"
   "gparted" "wlr-randr" "kanshi" "uwsm"
   "ufw" "gufw" "gnupg"
 )
@@ -72,6 +72,7 @@ AUR_PACKAGES=(
   "visual-studio-code-bin"
   "lazygit" "git-delta"
   "swayosd-git"
+  "qimgv"
 )
 
 # --- Script Body ---
