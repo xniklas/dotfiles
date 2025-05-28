@@ -2,7 +2,7 @@
 **HP Pavilion x360 14-cd0xxx | Intel CPU | Integrated Graphics | Hyprland | 2025**
 
 # TODO
-- add multilib at the start of the script
+- add that user services also start not only enabled
 - add nvida, amd or intel gpu drivers as an option
 
 

@@ -299,43 +299,7 @@ main() {
     fi
   done
 
-  # 7. User Service Enablement
-  print_stage "Enabling User Services..."
-  USER_SERVICES=(
-    "pipewire.service"
-    "wireplumber.service"
-    "udiskie.service"
-    "kanshi.service"
-    "uwsm.service"
-    "hyprpolkitagent.service"
-    "hyprpaper.service"
-    "hypridle.service"
-    "gpg-agent.service"
-  )
-  for service in "${USER_SERVICES[@]}"; do
-    service_name_base=$(basename "$service" .service)
-    if systemctl --user list-unit-files --type=service,socket | grep -q "^${service_name_base}\.\(service\|socket\)"; then
-      actual_unit_to_enable="$service"
-      if [[ "$service_name_base" == "gpg-agent" ]] && systemctl --user list-unit-files | grep -q "gpg-agent.socket"; then
-        actual_unit_to_enable="gpg-agent.socket"
-      fi
-
-      if ! systemctl --user is-enabled --quiet "$actual_unit_to_enable"; then
-        print_info "Enabling user unit: $actual_unit_to_enable"
-        systemctl --user enable "$actual_unit_to_enable" || print_warning "Failed to enable user unit $actual_unit_to_enable"
-      else
-        print_success "User unit $actual_unit_to_enable already enabled."
-      fi
-      if [[ "$actual_unit_to_enable" == *".service" ]] && ! systemctl --user is-active --quiet "$actual_unit_to_enable"; then
-        print_info "Starting user service: $actual_unit_to_enable"
-        systemctl --user start "$actual_unit_to_enable" || print_warning "Failed to start user service $actual_unit_to_enable (might be D-Bus activated or start on next login)"
-      fi
-    else
-      print_warning "User unit for $service_name_base not found. Skipping. Ensure the package provides this service file."
-    fi
-  done
-
-  # 8. Final Steps & Info (This is step 8 in YOUR script, previously my step 9)
+  # 7. Final Steps & Info (This is step 8 in YOUR script, previously my step 9)
   print_stage "Finalizing Setup..."
   print_info "Updating font cache..."
   fc-cache -f -v || print_warning "fc-cache failed."
