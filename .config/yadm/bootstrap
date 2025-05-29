@@ -127,7 +127,6 @@ AUR_PACKAGES=(
     "ueberzugpp"
     "resvg"
     "zen-browser-bin"
-    "vesktop-bin"
     "visual-studio-code-bin"
     "lazygit" "git-delta"
     "swayosd-git"
