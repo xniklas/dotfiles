@@ -3,17 +3,13 @@
 # ALIAS
 
 # EXPORTS
-# set the locale of the shell
 export LANG="en_US.UTF-8"
-
 export EDITOR="nvim"
-
+export STARSHIP_CONFIG=~/.config/starship/starship.toml
 # include user-specific binaries and scripts
 export PATH="$HOME/.local/bin:$PATH"
-
 # add Rust binaries to the PATH
 export PATH="$PATH:$HOME/.cargo/bin"
-
 # add Go binaries to the PATH
 export PATH="$PATH:$HOME/go/bin"
 
