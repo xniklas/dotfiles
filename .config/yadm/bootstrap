@@ -122,6 +122,7 @@ AUR_PACKAGES=(
     "waybar-update"
     "rofi-wayland" "rofi-emoji"
     "catppuccin-cursors-mocha"
+    "catppuccin-gtk-theme-mocha"
     "hyprshot"
     "pyprland"
     "ueberzugpp"
