@@ -9,8 +9,7 @@ print_warning() { echo -e "\033[0;33mWARNING: $1\033[0m"; }
 print_error() { echo -e "\033[0;31mERROR: $1\033[0m"; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
-package_installed_pacman() { pacman -Q "$1" >/dev/null 2>&1; }
-package_installed_aur() { pacman -Q "$1" >/dev/null 2>&1; }
+package_installed() { pacman -Q "$1" &>/dev/null; }
 
 ensure_sudo() {
   if [[ $EUID -ne 0 ]]; then
@@ -25,299 +24,454 @@ ensure_sudo() {
   fi
 }
 
+# --- Pre-flight Checks ---
+check_prerequisites() {
+    print_stage "Running Pre-flight Checks..."
+    
+    # Check internet connectivity
+    if ! ping -c 1 archlinux.org &>/dev/null; then
+        print_error "No internet connection detected."
+        exit 1
+    fi
+    
+    # Check available disk space (at least 15GB free)
+    available_space=$(df / | awk 'NR==2 {print $4}')
+    if [[ $available_space -lt 15728640 ]]; then  # 15GB in KB
+        print_error "Less than 15GB free space available. Installation requires at least 15GB."
+        exit 1
+    fi
+    
+    # Check if running as root (shouldn't be)
+    if [[ $EUID -eq 0 ]]; then
+        print_error "This script should not be run as root."
+        exit 1
+    fi
+    
+    print_success "Pre-flight checks passed."
+}
+
+# --- GPU Detection ---
+detect_gpu() {
+    print_stage "Detecting GPU and adding appropriate drivers..."
+    
+    local gpu_packages=()
+    
+    # Check for NVIDIA GPU
+    if lspci | grep -i nvidia &>/dev/null; then
+        print_info "NVIDIA GPU detected."
+        gpu_packages+=(
+            "nvidia" "nvidia-utils" "lib32-nvidia-utils"
+            "nvidia-settings" "libva-nvidia-driver"
+        )
+    fi
+    
+    # Check for AMD GPU
+    if lspci | grep -i "vga.*amd\|vga.*ati\|vga.*radeon" &>/dev/null; then
+        print_info "AMD GPU detected."
+        gpu_packages+=(
+            "mesa" "lib32-mesa" "vulkan-radeon" "lib32-vulkan-radeon"
+            "libva-mesa-driver" "lib32-libva-mesa-driver"
+            "mesa-vdpau" "lib32-mesa-vdpau"
+        )
+    fi
+    
+    # Check for Intel integrated graphics
+    if lspci | grep -i "vga.*intel" &>/dev/null; then
+        print_info "Intel integrated GPU detected."
+        gpu_packages+=(
+            "mesa" "lib32-mesa" "vulkan-intel" "lib32-vulkan-intel"
+            "intel-media-driver" "libva-intel-driver" "libva-utils"
+        )
+    fi
+    
+    # Add detected GPU packages to base packages
+    if [[ ${#gpu_packages[@]} -gt 0 ]]; then
+        PACKAGE_GROUPS[gpu]="${gpu_packages[*]}"
+        print_success "Added GPU-specific packages: ${gpu_packages[*]}"
+    else
+        print_warning "No specific GPU detected. Only basic mesa drivers will be installed."
+        PACKAGE_GROUPS[gpu]="mesa vulkan-mesa-drivers"
+    fi
+}
+
 # --- Configuration ---
 AUR_HELPER_CMD="yay"
 PYTHON_USER_BIN_DIR="$HOME/.local/bin"
 MPV_CONFIG_DIR="$HOME/.config/mpv"
 export PATH="$PYTHON_USER_BIN_DIR:$HOME/.cargo/bin:$PATH"
 
-PACMAN_PACKAGES=(
-  "linux" "linux-zen" "fwupd"
-  "grub" "intel-ucode" "hyprland" "wayland" "wayland-protocols"
-  "mesa" "vulkan-intel" "intel-media-driver" "libva-intel-driver" "libva-utils"
-  "sddm" "polkit" "hyprpolkitagent"
-  "xdg-desktop-portal-hyprland" "xdg-desktop-portal-gtk"
-  "base-devel" "git"
-  "foot" "tmux" "zsh" "zsh-completions" "zsh-syntax-highlighting" "zsh-autosuggestions" "starship"
-  "networkmanager" "network-manager-applet" "gnome-keyring"
-  "bluez" "bluez-utils" "blueman" "brightnessctl" "udiskie"
-  "bat" "eza" "fd" "ripgrep" "fzf" "vivid" "whois"
-  "btop" "fastfetch"
-  "curl" "wget" "unzip" "zip" "tar" "unrar" "rsync" "p7zip" "ark"
-  "hyprpaper" "hyprlock" "hyprpicker" "hypridle" "swaync" "waybar"
-  "nwg-look" "kvantum" "qt5ct" "qt6ct"
-  "ttf-liberation" "ttf-dejavu" "noto-fonts" "noto-fonts-emoji" "noto-fonts-cjk"
-  "ttf-jetbrains-mono" "ttf-jetbrains-mono-nerd"
-  "grim" "slurp" "satty" "wl-clipboard" "cliphist"
-  "pipewire" "wireplumber" "pipewire-audio" "pipewire-pulse" "pipewire-alsa" "pipewire-jack" "lib32-pipewire"
-  "pavucontrol" "pamixer" "playerctl" "easyeffects" "qpwgraph" "cava"
-  "dolphin" "yazi" "ffmpegthumbnailer" "ffmpeg" "poppler" "imagemagick"
-  "libreoffice-fresh" "obsidian"
-  "neovim" "github-cli" "nodejs" "npm" "python" "go" "jdk-openjdk"
-  "mpv" "obs-studio"
-  "gparted" "wlr-randr" "kanshi" "uwsm"
-  "ufw" "gufw" "gnupg"
+# Package groups organized by function
+declare -A PACKAGE_GROUPS=(
+    [base]="linux linux-zen fwupd grub intel-ucode"
+    [hyprland]="hyprland wayland wayland-protocols sddm polkit hyprpolkitagent"
+    [desktop_portal]="xdg-desktop-portal-hyprland xdg-desktop-portal-gtk"
+    [build_tools]="base-devel git"
+    [terminal]="foot tmux zsh zsh-completions zsh-syntax-highlighting zsh-autosuggestions starship"
+    [network]="networkmanager network-manager-applet gnome-keyring"
+    [bluetooth]="bluez bluez-utils blueman"
+    [system_utils]="brightnessctl udiskie bat eza fd ripgrep fzf vivid whois btop fastfetch"
+    [archive_utils]="curl wget unzip zip tar unrar rsync p7zip ark"
+    [hypr_extras]="hyprpaper hyprlock hyprpicker hypridle swaync waybar"
+    [theming]="nwg-look kvantum qt5ct qt6ct"
+    [fonts]="ttf-liberation ttf-dejavu noto-fonts noto-fonts-emoji noto-fonts-cjk ttf-jetbrains-mono ttf-jetbrains-mono-nerd"
+    [screenshot]="grim slurp satty wl-clipboard cliphist"
+    [audio]="pipewire wireplumber pipewire-audio pipewire-pulse pipewire-alsa pipewire-jack lib32-pipewire pavucontrol pamixer playerctl easyeffects qpwgraph cava"
+    [file_managers]="dolphin yazi ffmpegthumbnailer ffmpeg poppler imagemagick"
+    [productivity]="libreoffice-fresh obsidian"
+    [development]="neovim github-cli nodejs npm python go jdk-openjdk"
+    [media]="mpv obs-studio"
+    [system_tools]="gparted wlr-randr kanshi uwsm"
+    [security]="ufw gufw gnupg"
 )
 
 AUR_PACKAGES=(
-  "yay"
-  "waybar-update"
-  "rofi-wayland" "rofi-emoji"
-  "catppuccin-cursors-mocha"
-  "hyprshot"
-  "ueberzugpp"
-  "resvg"
-  "zen-browser-bin"
-  "vesktop-bin"
-  "visual-studio-code-bin"
-  "lazygit" "git-delta"
-  "swayosd-git"
-  "qimgv"
+    "yay"
+    "waybar-update"
+    "rofi-wayland" "rofi-emoji"
+    "catppuccin-cursors-mocha"
+    "hyprshot"
+    "ueberzugpp"
+    "resvg"
+    "zen-browser-bin"
+    "vesktop-bin"
+    "visual-studio-code-bin"
+    "lazygit" "git-delta"
+    "swayosd-git"
+    "qimgv"
 )
+
+# --- Service Management ---
+manage_services() {
+    print_stage "Enabling System Services..."
+    
+    local services=(
+        "sddm.service"
+        "NetworkManager.service"
+        "bluetooth.service"
+        "ufw.service"
+    )
+    
+    for service in "${services[@]}"; do
+        local service_name=${service%.*}
+        
+        # Check if service exists
+        if ! systemctl list-unit-files "$service" &>/dev/null; then
+            print_warning "Service $service not found, skipping."
+            continue
+        fi
+        
+        # Enable service
+        if ! systemctl is-enabled "$service" &>/dev/null; then
+            print_info "Enabling $service..."
+            if ! sudo systemctl enable "$service"; then
+                print_warning "Failed to enable $service"
+                continue
+            fi
+        else
+            print_success "Service $service already enabled."
+        fi
+        
+        # Start service
+        if ! systemctl is-active "$service" &>/dev/null; then
+            print_info "Starting $service..."
+            sudo systemctl start "$service" || print_warning "Failed to start $service (might start on reboot)"
+        else
+            print_success "Service $service already running."
+        fi
+    done
+}
+
+# --- Rust Installation ---
+install_rust() {
+    print_stage "Installing Rust toolchain..."
+    
+    if command_exists rustc && command_exists cargo; then
+        print_success "Rust already installed."
+        return 0
+    fi
+    
+    # Install rustup if needed
+    if ! command_exists rustup; then
+        print_info "Installing rustup..."
+        if ! curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable; then
+            print_error "Rustup installation failed."
+            exit 1
+        fi
+    fi
+    
+    # Source cargo env
+    if [[ -f "$HOME/.cargo/env" ]]; then
+        source "$HOME/.cargo/env"
+    else
+        print_warning "Cargo env file not found after rustup install."
+    fi
+    
+    # Verify installation
+    if ! command_exists rustc || ! command_exists cargo; then
+        print_error "Rust installation verification failed."
+        exit 1
+    fi
+    
+    print_success "Rust toolchain installed successfully."
+}
+
+# --- Mirror Optimization ---
+optimize_mirrors() {
+    print_stage "Optimizing Pacman Mirrors..."
+    
+    # Install reflector if not present
+    if ! package_installed "reflector"; then
+        print_info "Installing reflector for mirror optimization..."
+        if ! sudo pacman -S --needed --noconfirm reflector; then
+            print_warning "Failed to install reflector. Skipping mirror optimization."
+            return 1
+        fi
+    fi
+    
+    print_info "Backing up current mirrorlist..."
+    sudo cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.backup
+    
+    print_info "Updating mirrorlist with fastest mirrors..."
+    if ! sudo reflector --country Germany,Netherlands,France --protocol https --latest 20 --sort rate --save /etc/pacman.d/mirrorlist; then
+        print_warning "Reflector failed. Restoring backup mirrorlist."
+        sudo cp /etc/pacman.d/mirrorlist.backup /etc/pacman.d/mirrorlist
+        return 1
+    fi
+    
+    print_success "Mirrorlist optimized successfully."
+}
 
 # --- Script Body ---
 main() {
-  ensure_sudo
-  mkdir -p "$PYTHON_USER_BIN_DIR" "$MPV_CONFIG_DIR"
+    check_prerequisites
+    ensure_sudo
+    mkdir -p "$PYTHON_USER_BIN_DIR" "$MPV_CONFIG_DIR"
 
-  # Ensure multilib repository is enabled
-  print_stage "Checking and Enabling Multilib Repository..."
-  if grep -q "^#\[multilib\]" /etc/pacman.conf; then
-    print_info "Multilib repository is commented out. Enabling..."
-    sudo sed -i '/^#\[multilib\]/{N;s/#\[multilib\]\n#Include/\[multilib\]\nInclude/}' /etc/pacman.conf
-    print_info "Multilib enabled. Database will be synced in the next step."
-    # Force a database re-sync after this change if pacman -Syu is run next
-  elif ! grep -q "^\[multilib\]" /etc/pacman.conf; then
-    print_warning "Multilib section not found in /etc/pacman.conf in a recognizable format."
-    print_warning "Please ensure it's properly configured manually if lib32 packages are needed."
-  else
-    print_success "Multilib repository is already enabled."
-  fi
+    # Optimize mirrors first
+    optimize_mirrors
 
-  # 0. Pre-Pacman System Check & Update (MODIFIED SECTION)
-  print_stage "Preparing Pacman and Performing System Update..."
-  if [ -f "/var/lib/pacman/db.lck" ]; then
-    print_warning "/var/lib/pacman/db.lck found!"
-    print_warning "This means another pacman instance may be running or was interrupted."
-    print_warning "If you are sure no other pacman instance is running, you can try removing it with 'sudo rm /var/lib/pacman/db.lck' and re-run the script."
-    print_error "Exiting due to existing pacman lock."
-    exit 1
-  fi
+    # Detect GPU and add appropriate packages
+    detect_gpu
 
-  print_info "Attempting to synchronize package databases and update the entire system first..."
-  # Changed from -Syu in the previous suggestion to just -Sy to avoid full upgrade here if the user prefers,
-  # but -Syu is safer before installing a list of packages.
-  # For robustness against "package not found", -Syu is better.
-  # If you strictly want only new packages installed from the list without a full system upgrade first,
-  # then just `sudo pacman -Sy --noconfirm` would be the minimal database sync.
-  # However, this can lead to partial upgrade scenarios if not careful.
-  # The safest approach is a full sync and upgrade.
-  if ! sudo pacman -Syu --noconfirm; then # Using -Syu for safety before installing a list
-    print_error "Critical: Failed to synchronize databases and update system (pacman -Syu)."
-    print_error "Please check your internet connection, your mirrorlist (/etc/pacman.d/mirrorlist), and try running 'sudo pacman -Syu' manually in your terminal to see the exact errors."
-    print_error "You might need to update your mirrorlist, for example, using the 'reflector' tool."
-    exit 1
-  else
-    print_success "System synchronized and updated successfully."
-  fi
-  # End of MODIFIED SECTION for pre-pacman update
-
-  # 1. Install Pacman Packages (Original logic, but now after -Syu)
-  print_stage "Installing specified Pacman packages..."
-  local missing_pacman_pkgs=()
-  for pkg in "${PACMAN_PACKAGES[@]}"; do
-    if ! package_installed_pacman "$pkg"; then
-      missing_pacman_pkgs+=("$pkg")
+    # Ensure multilib repository is enabled
+    print_stage "Checking and Enabling Multilib Repository..."
+    if grep -q "^#\[multilib\]" /etc/pacman.conf; then
+        print_info "Multilib repository is commented out. Enabling..."
+        sudo sed -i '/^#\[multilib\]/{N;s/#\[multilib\]\n#Include/\[multilib\]\nInclude/}' /etc/pacman.conf
+        print_info "Multilib enabled. Database will be synced in the next step."
+    elif ! grep -q "^\[multilib\]" /etc/pacman.conf; then
+        print_warning "Multilib section not found in /etc/pacman.conf in a recognizable format."
+        print_warning "Please ensure it's properly configured manually if lib32 packages are needed."
     else
-      print_info "Pacman: $pkg already installed (or updated by previous -Syu)."
+        print_success "Multilib repository is already enabled."
     fi
-  done
-  if [ ${#missing_pacman_pkgs[@]} -gt 0 ]; then
-    # Now use -S --needed, as system is already up-to-date from the -Syu step.
-    sudo pacman -S --needed --noconfirm "${missing_pacman_pkgs[@]}" || {
-      print_error "Pacman installation of one or more specified packages failed."
-      print_error "Try installing them manually to see the specific error, e.g., 'sudo pacman -S package_name'."
-      exit 1 # Added exit here for robustness
-    }
-  else
-    print_success "All specified Pacman packages are already installed and up-to-date."
-  fi
 
-  # 2. Install rustup
-  print_stage "Installing/Updating rustup and Rust stable toolchain..."
-  if ! command_exists rustup; then
-    print_info "Installing rustup..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
-    if [ -f "$HOME/.cargo/env" ]; then source "$HOME/.cargo/env"; else print_warning "Cargo env file not found after rustup install."; fi
-    if ! command_exists rustc; then print_error "Rust (rustc) installation via rustup failed."; else print_success "Rustup and stable toolchain installed."; fi
-  else
-    print_info "rustup already installed. Ensuring stable toolchain is default..."
-    rustup default stable
-    print_success "Rust stable toolchain set as default."
-  fi
-
-  # 3. Install yay (AUR Helper)
-  print_stage "Installing AUR Helper (yay)..."
-  if ! command_exists $AUR_HELPER_CMD; then
-    print_info "$AUR_HELPER_CMD not found. Installing..."
-    if ! package_installed_pacman "git" || ! package_installed_pacman "base-devel"; then
-      print_info "Installing git and base-devel for yay compilation..."
-      sudo pacman -S --needed --noconfirm git base-devel || { # Use -S not -Syu
-        print_error "Failed to install git/base-devel."
+    # Pre-Pacman System Check & Update
+    print_stage "Preparing Pacman and Performing System Update..."
+    if [ -f "/var/lib/pacman/db.lck" ]; then
+        print_warning "/var/lib/pacman/db.lck found!"
+        print_warning "This means another pacman instance may be running or was interrupted."
+        print_warning "If you are sure no other pacman instance is running, you can try removing it with 'sudo rm /var/lib/pacman/db.lck' and re-run the script."
+        print_error "Exiting due to existing pacman lock."
         exit 1
-      }
     fi
-    (
-      cd /tmp || {
-        print_error "Failed to cd to /tmp"
+
+    print_info "Attempting to synchronize package databases and update the entire system first..."
+    if ! sudo pacman -Syu --noconfirm; then
+        print_error "Critical: Failed to synchronize databases and update system (pacman -Syu)."
+        print_error "Please check your internet connection, your mirrorlist (/etc/pacman.d/mirrorlist), and try running 'sudo pacman -Syu' manually in your terminal to see the exact errors."
+        print_error "You might need to update your mirrorlist, for example, using the 'reflector' tool."
         exit 1
-      } # Added exit
-      if [ -d "yay" ]; then rm -rf yay; fi
-      git clone https://aur.archlinux.org/yay.git
-      cd yay || {
-        print_error "Failed to cd to yay directory"
-        exit 1
-      } # Added exit
-      makepkg -si --noconfirm --needed
-    )
+    else
+        print_success "System synchronized and updated successfully."
+    fi
+
+    # Install Pacman Packages by groups
+    print_stage "Installing Pacman packages by groups..."
+    local all_pacman_packages=()
+    
+    # Collect all packages from groups
+    for group in "${!PACKAGE_GROUPS[@]}"; do
+        print_info "Processing group: $group"
+        read -ra group_packages <<< "${PACKAGE_GROUPS[$group]}"
+        all_pacman_packages+=("${group_packages[@]}")
+    done
+    
+    local missing_pacman_pkgs=()
+    for pkg in "${all_pacman_packages[@]}"; do
+        if ! package_installed "$pkg"; then
+            missing_pacman_pkgs+=("$pkg")
+        else
+            print_info "Pacman: $pkg already installed."
+        fi
+    done
+    
+    if [ ${#missing_pacman_pkgs[@]} -gt 0 ]; then
+        if ! sudo pacman -S --needed --noconfirm "${missing_pacman_pkgs[@]}"; then
+            print_error "Pacman installation of one or more specified packages failed."
+            print_error "Try installing them manually to see the specific error, e.g., 'sudo pacman -S package_name'."
+            exit 1
+        fi
+    else
+        print_success "All specified Pacman packages are already installed and up-to-date."
+    fi
+
+    # Install Rust
+    install_rust
+
+    # Install yay (AUR Helper)
+    print_stage "Installing AUR Helper (yay)..."
     if ! command_exists $AUR_HELPER_CMD; then
-      print_error "$AUR_HELPER_CMD installation failed."
-      exit 1
-    fi # Added exit
-    print_success "$AUR_HELPER_CMD installed successfully."
-  else
-    print_success "$AUR_HELPER_CMD is already installed."
-  fi
-
-  # 4. Install AUR Packages (excluding yay itself)
-  print_stage "Installing AUR packages..."
-  local missing_aur_pkgs_to_install=()
-  for pkg in "${AUR_PACKAGES[@]}"; do
-    if [[ "$pkg" == "yay" ]]; then continue; fi
-    if [[ -n "$pkg" ]]; then
-      if ! package_installed_aur "$pkg"; then
-        missing_aur_pkgs_to_install+=("$pkg")
-      else
-        print_info "AUR: $pkg already installed."
-      fi
-    fi
-  done
-  if [ ${#missing_aur_pkgs_to_install[@]} -gt 0 ]; then
-    $AUR_HELPER_CMD -S --needed --noconfirm "${missing_aur_pkgs_to_install[@]}" || {
-      print_error "AUR installation failed."
-      exit 1 # Added exit
-    }
-  else
-    print_success "All specified AUR packages (excluding yay) are already installed."
-  fi
-
-  # 5. Custom Installations
-  print_stage "Handling Custom Installations..."
-
-  # uv (Python package manager via curl)
-  print_info "Installing/Updating uv..."
-  if ! command_exists uv || [ ! -x "$PYTHON_USER_BIN_DIR/uv" ]; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --bin-dir "$PYTHON_USER_BIN_DIR" || print_error "uv installation failed." # Added exit potential
-    # Re-check after install attempt
-    if ! command_exists uv && [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then
-      print_success "uv installed to $PYTHON_USER_BIN_DIR."
-    elif command_exists uv; then
-      print_success "uv installed (found in PATH)."
+        print_info "$AUR_HELPER_CMD not found. Installing..."
+        if ! package_installed "git" || ! package_installed "base-devel"; then
+            print_info "Installing git and base-devel for yay compilation..."
+            if ! sudo pacman -S --needed --noconfirm git base-devel; then
+                print_error "Failed to install git/base-devel."
+                exit 1
+            fi
+        fi
+        (
+            cd /tmp || {
+                print_error "Failed to cd to /tmp"
+                exit 1
+            }
+            if [ -d "yay" ]; then rm -rf yay; fi
+            if ! git clone https://aur.archlinux.org/yay.git; then
+                print_error "Failed to clone yay repository"
+                exit 1
+            fi
+            cd yay || {
+                print_error "Failed to cd to yay directory"
+                exit 1
+            }
+            if ! makepkg -si --noconfirm --needed; then
+                print_error "Failed to build yay"
+                exit 1
+            fi
+        )
+        if ! command_exists $AUR_HELPER_CMD; then
+            print_error "$AUR_HELPER_CMD installation failed."
+            exit 1
+        fi
+        print_success "$AUR_HELPER_CMD installed successfully."
     else
-      print_warning "uv installation attempted, but 'uv' command might not be in current PATH immediately. It should be available in new shells."
+        print_success "$AUR_HELPER_CMD is already installed."
     fi
-  else
-    print_success "uv already installed."
-  fi
 
-  # commitizen (via uv)
-  print_info "Installing/Updating commitizen with uv..."
-  UV_CMD_PATH=""
-  if command_exists uv; then
-    UV_CMD_PATH="uv"
-  elif [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then UV_CMD_PATH="$PYTHON_USER_BIN_DIR/uv"; fi
-
-  if [ -n "$UV_CMD_PATH" ]; then
-    if ! ("$UV_CMD_PATH" tool list 2>/dev/null | grep -q "commitizen") && ! command_exists cz; then # Added 2>/dev/null
-      print_info "Attempting to install commitizen tool via uv..."
-      "$UV_CMD_PATH" tool install commitizen || print_error "commitizen installation via uv tool failed." # Added exit potential
-      if ! ("$UV_CMD_PATH" tool list 2>/dev/null | grep -q "commitizen") && ! command_exists cz; then     # Added 2>/dev/null
-        print_warning "commitizen (cz) tool not found after uv install. Check uv setup and PATH."
-      else
-        print_success "commitizen (cz) installed via uv tool."
-      fi
+    # Install AUR Packages (excluding yay itself)
+    print_stage "Installing AUR packages..."
+    local missing_aur_pkgs_to_install=()
+    for pkg in "${AUR_PACKAGES[@]}"; do
+        if [[ "$pkg" == "yay" ]]; then continue; fi
+        if [[ -n "$pkg" ]]; then
+            if ! package_installed "$pkg"; then
+                missing_aur_pkgs_to_install+=("$pkg")
+            else
+                print_info "AUR: $pkg already installed."
+            fi
+        fi
+    done
+    if [ ${#missing_aur_pkgs_to_install[@]} -gt 0 ]; then
+        if ! $AUR_HELPER_CMD -S --needed --noconfirm "${missing_aur_pkgs_to_install[@]}"; then
+            print_error "AUR installation failed."
+            exit 1
+        fi
     else
-      print_success "commitizen (cz) already available (possibly via uv tool or PATH)."
+        print_success "All specified AUR packages (excluding yay) are already installed."
     fi
-  else
-    print_warning "uv not found. Skipping commitizen installation."
-  fi
 
-  # uosc (mpv script)
-  print_info "Installing/Updating uosc for mpv..."
-  if [ ! -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
-    mkdir -p "$MPV_CONFIG_DIR/scripts" # Ensure scripts subdir exists
-    print_info "Running uosc unix installer script..."
-    if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tomasklaen/uosc/HEAD/installers/unix.sh)"; then # Check command success
-      if [ -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
-        print_success "uosc installed successfully."
-      else
-        print_warning "uosc installation script ran, but uosc.lua not found in expected location. Check manually."
-      fi
+    # Custom Installations
+    print_stage "Handling Custom Installations..."
+
+    # uv (Python package manager via curl)
+    print_info "Installing/Updating uv..."
+    if ! command_exists uv || [ ! -x "$PYTHON_USER_BIN_DIR/uv" ]; then
+        if ! curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --bin-dir "$PYTHON_USER_BIN_DIR"; then
+            print_error "uv installation failed."
+            exit 1
+        fi
+        # Re-check after install attempt
+        if ! command_exists uv && [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then
+            print_success "uv installed to $PYTHON_USER_BIN_DIR."
+        elif command_exists uv; then
+            print_success "uv installed (found in PATH)."
+        else
+            print_warning "uv installation attempted, but 'uv' command might not be in current PATH immediately. It should be available in new shells."
+        fi
     else
-      print_error "uosc installation script failed." # Added this else
+        print_success "uv already installed."
     fi
-  else
-    print_success "uosc.lua already present. Skipping uosc installation."
-  fi
 
-  # 6. System Service Enablement
-  print_stage "Enabling System Services..."
-  SYSTEM_SERVICES=(
-    "sddm.service"
-    "NetworkManager.service"
-    "bluetooth.service"
-    "fstrim.timer"
-    "ufw.service"
-    "polkit.service"
-  )
-  for service in "${SYSTEM_SERVICES[@]}"; do
-    service_name_base=$(basename "$service" .service)
-    if systemctl list-unit-files --type=service | grep -q "^${service_name_base}.service"; then
-      if ! sudo systemctl is-enabled --quiet "$service"; then
-        print_info "Enabling system service: $service"
-        sudo systemctl enable "$service" || print_warning "Failed to enable $service"
-      else
-        print_success "System service $service already enabled."
-      fi
-      if [[ "$service" != "fstrim.timer" ]] && ! sudo systemctl is-active --quiet "$service"; then
-        print_info "Starting system service: $service"
-        sudo systemctl start "$service" || print_warning "Failed to start $service (might start on reboot or if already active)"
-      fi
+    # commitizen (via uv)
+    print_info "Installing/Updating commitizen with uv..."
+    UV_CMD_PATH=""
+    if command_exists uv; then
+        UV_CMD_PATH="uv"
+    elif [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then 
+        UV_CMD_PATH="$PYTHON_USER_BIN_DIR/uv"
+    fi
+
+    if [ -n "$UV_CMD_PATH" ]; then
+        if ! ("$UV_CMD_PATH" tool list 2>/dev/null | grep -q "commitizen") && ! command_exists cz; then
+            print_info "Attempting to install commitizen tool via uv..."
+            if ! "$UV_CMD_PATH" tool install commitizen; then
+                print_error "commitizen installation via uv tool failed."
+                exit 1
+            fi
+            if ! ("$UV_CMD_PATH" tool list 2>/dev/null | grep -q "commitizen") && ! command_exists cz; then
+                print_warning "commitizen (cz) tool not found after uv install. Check uv setup and PATH."
+            else
+                print_success "commitizen (cz) installed via uv tool."
+            fi
+        else
+            print_success "commitizen (cz) already available (possibly via uv tool or PATH)."
+        fi
     else
-      print_warning "System service unit $service_name_base.service not found. Skipping."
+        print_warning "uv not found. Skipping commitizen installation."
     fi
-  done
 
-  # 7. Final Steps & Info (This is step 8 in YOUR script, previously my step 9)
-  print_stage "Finalizing Setup..."
-  print_info "Updating font cache..."
-  fc-cache -f -v || print_warning "fc-cache failed."
+    # uosc (mpv script)
+    print_info "Installing/Updating uosc for mpv..."
+    if [ ! -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
+        mkdir -p "$MPV_CONFIG_DIR/scripts"
+        print_info "Running uosc unix installer script..."
+        if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tomasklaen/uosc/HEAD/installers/unix.sh)"; then
+            print_error "uosc installation script failed."
+            exit 1
+        fi
+        if [ -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
+            print_success "uosc installed successfully."
+        else
+            print_warning "uosc installation script ran, but uosc.lua not found in expected location. Check manually."
+        fi
+    else
+        print_success "uosc.lua already present. Skipping uosc installation."
+    fi
 
-  if [[ "$(basename "$SHELL")" != "zsh" ]]; then
-    print_warning "To set Zsh as your default shell, please run: chsh -s $(which zsh)"
-    print_warning "You will be prompted for your password. A logout/login is required for the change to take effect."
-  else
-    print_success "Zsh is already the default shell."
-  fi
+    # Enable and start services
+    manage_services
 
-  print_info "To check for and apply firmware updates (recommended after a fresh install and periodically):"
-  print_info "1. sudo fwupdmgr refresh --force"
-  print_info "2. sudo fwupdmgr get-updates"
-  print_info "3. sudo fwupdmgr update (this may be interactive and require reboots)"
+    # Final Steps & Info
+    print_stage "Finalizing Setup..."
+    print_info "Updating font cache..."
+    if ! fc-cache -f -v; then
+        print_warning "fc-cache failed."
+    fi
 
-  print_stage "Bootstrap script finished!"
-  print_warning "A reboot might be necessary for all changes to take full effect (kernel, services, audio fix, shell)."
+    if [[ "$(basename "$SHELL")" != "zsh" ]]; then
+        print_warning "To set Zsh as your default shell, please run: chsh -s $(which zsh)"
+        print_warning "You will be prompted for your password. A logout/login is required for the change to take effect."
+    else
+        print_success "Zsh is already the default shell."
+    fi
+
+    print_info "To check for and apply firmware updates (recommended after a fresh install and periodically):"
+    print_info "1. sudo fwupdmgr refresh --force"
+    print_info "2. sudo fwupdmgr get-updates"
+    print_info "3. sudo fwupdmgr update (this may be interactive and require reboots)"
+
+    print_stage "Bootstrap script finished!"
+    print_warning "A reboot might be necessary for all changes to take full effect (kernel, services, audio fix, shell)."
 }
 
 main
