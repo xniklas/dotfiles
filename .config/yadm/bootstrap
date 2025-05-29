@@ -34,13 +34,6 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check available disk space (at least 15GB free)
-    available_space=$(df / | awk 'NR==2 {print $4}')
-    if [[ $available_space -lt 15728640 ]]; then  # 15GB in KB
-        print_error "Less than 15GB free space available. Installation requires at least 15GB."
-        exit 1
-    fi
-    
     # Check if running as root (shouldn't be)
     if [[ $EUID -eq 0 ]]; then
         print_error "This script should not be run as root."
@@ -137,7 +130,8 @@ AUR_PACKAGES=(
     "visual-studio-code-bin"
     "lazygit" "git-delta"
     "swayosd-git"
-    "qimgv"
+    "qimgv-git"
+    "topgrade"
 )
 
 # --- Service Management ---
