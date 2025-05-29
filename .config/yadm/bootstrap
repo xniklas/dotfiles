@@ -385,11 +385,17 @@ main() {
 
     # uv (Python package manager via curl)
     print_info "Installing/Updating uv..."
-    if ! command_exists uv || [ ! -x "$PYTHON_USER_BIN_DIR/uv" ]; then
-        if ! curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --bin-dir "$PYTHON_USER_BIN_DIR"; then
+    if ! command_exists uv; then
+        if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
             print_error "uv installation failed."
             exit 1
         fi
+
+	# Source cargo env to make uv available immediately
+	if [[ -f "$HOME/.cargo/env" ]]; then
+	    source "$HOME/.cargo/env"
+	fi
+
         # Re-check after install attempt
         if ! command_exists uv && [ -x "$PYTHON_USER_BIN_DIR/uv" ]; then
             print_success "uv installed to $PYTHON_USER_BIN_DIR."
