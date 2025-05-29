@@ -123,6 +123,7 @@ AUR_PACKAGES=(
     "rofi-wayland" "rofi-emoji"
     "catppuccin-cursors-mocha"
     "hyprshot"
+    "pyprland"
     "ueberzugpp"
     "resvg"
     "zen-browser-bin"
