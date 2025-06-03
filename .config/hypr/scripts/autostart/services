@@ -32,3 +32,7 @@ uwsm app -- easyeffects --gapplication-service &
 
 # Screen sharing and portals
 uwsm app -- "$HOME"/.config/hypr/scripts/portal &
+
+# Load ICC profiles
+dispwin -d1 ~/.local/share/icc/benq-xl2420z-120hz.icm
+dispwin -d2 ~/.local/share/icc/G246HL.icm
