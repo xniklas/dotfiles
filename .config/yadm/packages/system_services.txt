@@ -1,0 +1,5 @@
+sddm.service
+NetworkManager.service
+bluetooth.service
+ufw.service
+cups.service

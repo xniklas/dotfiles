@@ -1,0 +1,11 @@
+pipewire.service
+pipewire-pulse.service
+wireplumber.service
+udiskie.service
+hyprpolkitagent.service
+hyprpaper.service
+hypridle.service
+gpg-agent.service
+xdg-desktop-portal-hyprland.service
+xdg-desktop-portal-gtk.service
+xdg-desktop-portal.service
