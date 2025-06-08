@@ -4,6 +4,11 @@
 # TODO
 - installed speech-dispatcher
 - installed lsp-plugins-lv2 lv2 lilv calf x42-plugins zam-plugins
+- installed eww, bc, waybar-updates, iwd, iwgtk, xwaylandvideobridge, gst-plugin-va, gst-plugins-bad, gst-plugins-good, pipewire-v4l2
+
+systemctl --user restart-failed xdg-desktop-portal-hyprland.service
+systemctl --user start xdg-desktop-portal-hyprland.service
+systemctl --user start xdg-desktop-portal.service
 
 ## ✨ Preliminary Considerations
 

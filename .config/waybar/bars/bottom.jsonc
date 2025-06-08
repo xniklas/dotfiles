@@ -1,0 +1,19 @@
+{
+  "include": [
+    "~/.config/waybar/modules/cpu.jsonc",
+    "~/.config/waybar/modules/memory.jsonc",
+    "~/.config/waybar/modules/network.jsonc",
+    "~/.config/waybar/modules/clock.jsonc",
+    "~/.config/waybar/modules/custom-updates.jsonc",
+  ],
+  "name": "bottom-bar",
+  "modules-left": [],
+  "modules-center": [
+    "custom/updates",
+    "cpu",
+    "clock",
+    "memory",
+    "network",
+  ],
+  "modules-right": [],
+}

@@ -1,0 +1,200 @@
+/* Variables */
+@define-color mantle #1e2030;
+@define-color base rgb(36, 39, 58);
+@define-color text #cad3f5;
+@define-color surface0 #363a4f;
+@define-color surface2 #5b6078;
+@define-color blue #8aadf4;
+@define-color green #a6da95;
+@define-color peach #f5a97f;
+@define-color rosewater #f4dbd6;
+@define-color lavender #b7bdf8;
+@define-color yellow #eed49f;
+@define-color red #ed8796;
+@define-color maroon #ee99a0;
+@define-color teal #8bd5ca;
+@define-color sky #91d7e3;
+@define-color sapphire #7dc4e4;
+@define-color mauve #c6a0f6;
+@define-color pink #f5bde6;
+@define-color border rgba(183, 189, 248, 0.4);
+
+* {
+  font-family: JetBrainsMono NFP;
+  font-size: 12px;
+  min-height: 0;
+}
+
+/* General Settings */
+#custom-cava-mon-1,
+#custom-cava-mon-2,
+#language,
+#tray,
+#pulseaudio,
+#window {
+  background-color: alpha(@surface0, 0.9);
+  padding: 0px 8px;
+  margin: 0px 2px 0px 2px;
+  border-radius: 8px;
+  border: 1px solid @border;
+  background-clip: padding-box;
+}
+
+window#waybar {
+  color: @text;
+  background: transparent;
+}
+
+window#waybar.hidden {
+  opacity: 0;
+}
+
+window#waybar.bottom-bar .modules-center {
+  background-image: linear-gradient(to right, #fa709a 0%, #fee140 100%);
+  background-size: 200% 200%;
+  animation: gradient 1s ease infinite;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+window#waybar.bottom-bar label {
+  font-size: 12px;
+  color: @base;
+  font-weight: bold;
+}
+
+#custom-updates,
+#clock,
+#cpu,
+#memory,
+#network {
+  background-color: alpha(@text, 0.3);
+  padding: 0px 8px;
+  margin: 0px 2px 0px 2px;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+
+#workspaces * {
+  font-size: 12px;
+}
+
+#workspaces {
+  background-color: alpha(@surface0, 0.9);
+  border: 1px solid @border;
+  padding: 0px;
+  margin: 0px 2px 0px 2px;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+
+#workspaces button {
+  border-radius: 8px;
+  margin: 2px;
+  padding: 0px 4px;
+  font-weight: bolder;
+  transition: all 0.3s cubic-bezier(0.55, -0.68, 0.48, 1.682);
+}
+
+#workspaces button label {
+  transition: all 0.5s cubic-bezier(0.55, -0.68, 0.48, 1.68);
+}
+
+#workspaces button.persistent {
+  color: @text;
+}
+
+#workspaces button.persistent:hover {
+  background-color: alpha(@surface0, 0.9);
+  color: @rosewater;
+}
+
+#workspaces button.empty {
+  color: @surface2;
+}
+
+#workspaces button.visible {
+  background: linear-gradient(
+      52deg,
+      rgba(218, 143, 143, 1) 0%,
+      rgba(205, 108, 108, 1) 30%,
+      rgba(215, 78, 78, 1) 48%,
+      rgba(185, 55, 55, 1) 77%,
+      rgba(155, 45, 45, 1) 100%
+  );
+  background-size: 150% 150%;
+  color: @base;
+}
+
+#workspaces button.visible:hover label {
+  color: @base;
+}
+
+#workspaces button.active {
+  background: linear-gradient(
+    52deg,
+    rgba(139, 213, 202, 1) 0%,
+    rgba(138, 173, 244, 1) 30%,
+    rgba(183, 189, 248, 1) 48%,
+    rgba(198, 160, 246, 1) 77%,
+    rgba(238, 153, 160, 1) 100%
+  );
+  background-size: 150% 150%;
+  color: @base;
+  animation: gradient 15s ease infinite;
+  transition: all 0.3s cubic-bezier(0.55, -0.68, 0.48, 1.682);
+}
+
+#workspaces button.active:hover label {
+  color: @base;
+}
+
+#workspaces button.urgent {
+  background: linear-gradient(
+      52deg,
+      rgba(255, 236, 179, 1) 0%,
+      rgba(255, 213, 79, 1) 30%,
+      rgba(255, 193, 7, 1) 48%,
+      rgba(255, 160, 0, 1) 77%,
+      rgba(230, 126, 34, 1) 100%
+  );
+  background-size: 200% 200%;
+}
+
+#workspaces button.urgent label {
+  color: @base;
+}
+
+#custom-updates {
+  color: @teal;
+}
+
+#window * {
+  font-size: 10px;
+  font-weight: bold;
+}
+
+#window {
+  background: linear-gradient(
+    52deg,
+    rgba(139, 213, 202, 1) 0%,
+    rgba(138, 173, 244, 1) 30%,
+    rgba(183, 189, 248, 1) 48%,
+    rgba(198, 160, 246, 1) 77%,
+    rgba(238, 153, 160, 1) 100%
+  );
+  background-size: 200% 200%;
+  animation: gradient 15s ease infinite;
+  text-shadow: 0px 0px 5px @lavender;
+  color: @mantle;
+  transition: all 0.3s cubic-bezier(0.55, -0.68, 0.48, 1.682);
+  border: none;
+}
+
+#language {
+  color: @blue;
+}
+
+#clock {
+  color: @lavender;
+}

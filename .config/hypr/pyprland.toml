@@ -13,7 +13,7 @@ command = "foot -a scratchpad-large"
 lazy = true
 
 [scratchpads.yazi]
-command = "foot -a scratchpad-large fish -c yazi"
+command = "foot -a scratchpad-large yazi"
 unfocus = "hide"
 hysteresis = 0.1
 lazy = true
@@ -27,11 +27,11 @@ command = "foot -a scratchpad-large nvtop"
 lazy = true
 
 [scratchpads.topgrade-system]
-command = "foot -a scratchpad-large zsh -c 'up'"
+command = "foot -a scratchpad-large zsh -c 'topgrade -k --only system'"
 lazy = true
 
 [scratchpads.topgrade-all]
-command = "foot -a scratchpad-large zsh -c 'upall'"
+command = "foot -a scratchpad-large zsh -c 'topgrade -k --no-self-update'"
 lazy = true
 
 [scratchpads.bluetooth]

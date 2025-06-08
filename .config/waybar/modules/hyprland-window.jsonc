@@ -1,0 +1,12 @@
+{
+  "hyprland/window": {
+    "format": "{}",
+    "max-length": 120,
+    "rewrite": {
+      "(.*) — Zen Browser": "$1 󰇧",
+      "(.*)Spotify": "Spotify 󰓇",
+      "foot": "Terminal ",
+    },
+    "seperate-outputs": false,
+  },
+}

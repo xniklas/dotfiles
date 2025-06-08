@@ -1,0 +1,8 @@
+{
+  "custom/cava-mon-2": {
+    "exec": "~/.config/waybar/scripts/cava-mon-2.sh",
+    "format": "{}",
+    "on-click": "foot -a center-float-mini cava",
+    "on-click-right": "easyeffects",
+  },
+}

@@ -1,0 +1,20 @@
+{
+  "include": [
+    "~/.config/waybar/modules/custom-updates.jsonc",
+    "~/.config/waybar/modules/custom-cava-mon-2.jsonc",
+    "~/.config/waybar/modules/hyprland-workspaces.jsonc",
+    "~/.config/waybar/modules/hyprland-language.jsonc",
+    "~/.config/waybar/modules/tray.jsonc",
+  ],
+  "modules-left": [
+    "hyprland/workspaces",
+    "custom/cava-mon-2",
+  ],
+  "modules-center": [
+  ],
+  "modules-right": [
+    "tray",
+    "custom/updates",
+    "hyprland/language",
+  ],
+}

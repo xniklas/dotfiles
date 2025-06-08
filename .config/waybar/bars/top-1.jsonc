@@ -1,0 +1,22 @@
+{
+  "include": [
+    "~/.config/waybar/modules/custom-cava-mon-1.jsonc",
+    "~/.config/waybar/modules/hyprland-workspaces.jsonc",
+    "~/.config/waybar/modules/hyprland-language.jsonc",
+    "~/.config/waybar/modules/hyprland-window.jsonc",
+    "~/.config/waybar/modules/pulseaudio.jsonc",
+    "~/.config/waybar/modules/tray.jsonc",
+  ],
+  "modules-left": [
+    "hyprland/workspaces",
+    "custom/cava-mon-1",
+  ],
+  "modules-center": [
+    "hyprland/window",
+  ],
+  "modules-right": [
+    "tray",
+    "hyprland/language",
+    "pulseaudio",
+  ],
+}

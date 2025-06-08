@@ -72,6 +72,8 @@ alias fgrep="fgrep --color=auto"
 alias egrep="egrep --color=auto"
 alias rg="rg --pretty --smart-case"
 
+alias topupsys="topgrade -k --only system"
+
 # ============================================================================ #
 # ░█▀▀░█░█░█▀█░█▀█░█▀▄░▀█▀░█▀▀
 # ░█▀▀░▄▀▄░█▀▀░█░█░█▀▄░░█░░▀▀█
@@ -85,6 +87,7 @@ export STARSHIP_CONFIG=~/.config/starship/starship.toml
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_CACHE_HOME="$HOME/.cache"
+export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:$XDG_DATA_DIRS"
 
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$HOME/.cargo/bin:$PATH"

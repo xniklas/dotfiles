@@ -1,0 +1,46 @@
+[
+  {
+    "include": "~/.config/waybar/bars/top-1.jsonc",
+    "height": 25,
+    "layer": "top",
+    "position": "top",
+    "output": "DVI-D-1",
+    "mode": "dock",
+    "gtk-layer-shell": true,
+    "exclusive": true, // request an exclusive zone from the compositor so no windows are drawn underneath
+    "passthrough": false, // dont allow pointer events to pass through the bar
+    "margin-left": 10,
+    "margin-right": 10,
+    "margin-top": 5,
+    "margin-bottom": 0,
+  },
+  {
+    "include": "~/.config/waybar/bars/top-2.jsonc",
+    "height": 25,
+    "layer": "top",
+    "position": "top",
+    "output": "HDMI-A-2",
+    "mode": "dock",
+    "gtk-layer-shell": true,
+    "exclusive": true, // request an exclusive zone from the compositor so no windows are drawn underneath
+    "passthrough": false, // dont allow pointer events to pass through the bar
+    "margin-left": 10,
+    "margin-right": 10,
+    "margin-top": 5,
+    "margin-bottom": 0,
+  },
+  {
+    "include": "~/.config/waybar/bars/bottom.jsonc",
+    "height": 15,
+    "layer": "top",
+    "position": "bottom",
+    "mode": "dock",
+    "gtk-layer-shell": true,
+    "exclusive": true, // request an exclusive zone from the compositor so no windows are drawn underneath
+    "passthrough": false, // dont allow pointer events to pass through the bar
+    "margin-left": 10,
+    "margin-right": 10,
+    "margin-top": 0,
+    "margin-bottom": 10,
+  },
+]
