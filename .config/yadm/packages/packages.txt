@@ -135,6 +135,7 @@ ripgrep
 rofi-emoji
 rofi-wayland
 satty
+sddm
 sed
 slurp
 sof-firmware
