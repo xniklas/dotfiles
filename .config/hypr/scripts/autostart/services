@@ -1,40 +1,15 @@
 #!/bin/bash
 
-# Wallpaper Engine
-# uwsm app -- hyprpaper & # started via systemctl service (uwsm)
+# Core session utilities (session slice)
+uwsm app -s s -- "$HOME"/.config/hypr/scripts/portal &
+uwsm app -s s -- wl-paste --watch cliphist store &
 
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
+# Background services (background slice)
+uwsm app -s b -- udiskie &
+uwsm app -s b -- easyeffects --gapplication-service &
+uwsm app -s b -- swayosd-server &
 
-# Screen sharing and portals
-uwsm app -- "$HOME"/.config/hypr/scripts/portal &
-
-# Automounter for removeable media
-uwsm app -- udiskie &
-
-# Pyprland Daemon
+# UI applications (app slice - default)
 uwsm app -- pypr --debug /tmp/pypr.log &
-
-# Bar
 uwsm app -- waybar &
-
-# Notification Daemon
 uwsm app -- swaync &
-
-# OSD Window
-uwsm app -- swayosd-server &
-
-# Idle Daemon to screen lock
-# uwsm app -- hypridle & # started via systemctl service (uwsm)
-
-# Clipboard
-uwsm app -- wl-paste --watch cliphist store &
-
-# Polkit authentication
-# uwsm app -- /usr/lib/hyprpolkitagent/hyprpolkitagent & # started via systemctl service (uwsm)
-
-# Audio
-uwsm app -- easyeffects --gapplication-service &
-
-# Load ICC profiles
-dispwin -d1 ~/.local/share/icc/benq-xl2420z-120hz.icm
-dispwin -d2 ~/.local/share/icc/G246HL.icm

@@ -1,0 +1,6 @@
+# Tearing (Hyprland-specific)
+export WLR_DRM_NO_ATOMIC=0
+
+# NVIDIA with Hyprland
+export WLR_NO_HARDWARE_CURSORS=1
+export WLR_RENDERER=vulkan

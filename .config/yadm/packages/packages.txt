@@ -81,6 +81,7 @@ kvantum
 kvantum-qt5
 lazygit
 less
+libnewt
 libsecret
 libva
 libreoffice-fresh
