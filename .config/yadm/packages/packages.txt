@@ -157,6 +157,7 @@ ueberzugpp
 ufw
 unrar
 unzip
+uwsm
 vivid
 visual-studio-code-bin
 waybar

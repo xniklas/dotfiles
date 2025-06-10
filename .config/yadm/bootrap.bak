@@ -1,0 +1,452 @@
+#!/bin/bash
+
+# bootstrap
+# This script automates system setup and package installation for an Arch Linux environment.
+
+# Strict mode for robustness
+set -euo pipefail
+
+# --- Global Variables and Paths ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+PACKAGES_DIR="${SCRIPT_DIR}/packages"
+LIB_DIR="${SCRIPT_DIR}/lib"
+
+# Source utility and logging functions
+# Ensure logging.sh is sourced first to make log functions available
+if [[ -f "${LIB_DIR}/logging.sh" ]]; then
+  source "${LIB_DIR}/logging.sh"
+  # _init_logger is called automatically upon sourcing logging.sh if not run directly,
+  # ensuring the log file is set up correctly.
+else
+  echo "ERROR: logging.sh not found at ${LIB_DIR}/logging.sh. Cannot proceed without logging." >&2
+  exit 1
+fi
+
+if [[ -f "${LIB_DIR}/utils.sh" ]]; then
+  source "${LIB_DIR}/utils.sh"
+else
+  log_error "utils.sh not found at ${LIB_DIR}/utils.sh. Exiting."
+  exit 1
+fi
+
+# Array to store failed packages
+FAILED_PACKAGES=()
+GPU_TYPE=""
+MPV_CONFIG_DIR="${HOME}/.config/mpv"
+
+# --- Helper Functions ---
+
+# Function: print_section_header
+# Description: Prints a stylized header for script sections.
+# Arguments:
+#   $1: The header text.
+print_section_header() {
+  local header_text="$1"
+  log_info "--------------------------------------------------------------------------------"
+  log_info " ${BOLD}${CYAN}${header_text}${NC}"
+  log_info "--------------------------------------------------------------------------------"
+}
+
+# --- Core Setup Functions ---
+
+# Function: check_prerequisites
+# Description: Checks for essential prerequisites like network connectivity.
+check_prerequisites() {
+  print_section_header "Checking System Prerequisites"
+  log_status "Checking internet connectivity..."
+  if ! check_network; then
+    log_error "Internet connection required for setup. Please connect to the internet and try again."
+    exit 1
+  fi
+  log_success "Internet connection is active."
+}
+
+# Function: ensure_sudo
+# Description: Ensures the script is not run as root and confirms sudo functionality.
+ensure_sudo() {
+  print_section_header "Ensuring Sudo Permissions"
+  if check_sudo; then # check_sudo returns 0 if not root, 1 if root
+    log_success "Running as a regular user."
+    log_status "Verifying sudo access..."
+    if ! sudo -v &>/dev/null; then
+      log_error "sudo is not configured or password not entered correctly. Please fix sudo access."
+      exit 1
+    fi
+    log_success "Sudo access verified."
+  else
+    log_warn "This script should NOT be run directly with sudo."
+    log_warn "It needs to run as a regular user to correctly configure user-specific files (e.g., ~/.config, ~/.bashrc)."
+    log_error "Please run: bash ${BASH_SOURCE[0]}"
+    exit 1
+  fi
+}
+
+# Function: ask_gpu
+# Description: Prompts the user to select their GPU type.
+ask_gpu() {
+  print_section_header "GPU Selection"
+  while true; do
+    log_status "Which GPU do you have? (nvidia, amd, intel)"
+    read -rp "Enter your choice: " gpu_choice
+    gpu_choice=$(echo "$gpu_choice" | tr '[:upper:]' '[:lower:]') # Convert to lowercase
+    case "$gpu_choice" in
+    nvidia | amd | intel)
+      GPU_TYPE="$gpu_choice"
+      log_success "Selected GPU: ${GPU_TYPE}"
+      break
+      ;;
+    *)
+      log_warn "Invalid choice. Please enter 'nvidia', 'amd', or 'intel'."
+      ;;
+    esac
+  done
+}
+
+# Function: enable_multilib
+# Description: Enables the multilib repository in pacman.conf if not already enabled.
+enable_multilib() {
+  print_section_header "Enabling Multilib Repository"
+  local pacman_conf="/etc/pacman.conf"
+
+  # Check if multilib section is present and not commented out
+  if grep -qE "\[multilib\]\s*$" "$pacman_conf" && ! grep -qE "#\[multilib\]\s*$" "$pacman_conf"; then
+    log_success "Multilib repository already enabled."
+  else
+    log_info "Enabling multilib repository..."
+    # Use sed to uncomment the [multilib] section and its Include line
+    # The N; command reads the next line, allowing substitution across two lines.
+    if sudo sed -i '/^#\[multilib\]/{N;s/^#\[multilib\]\n#Include = \/etc\/pacman\.d\/mirrorlist/\[multilib\]\nInclude = \/etc\/pacman\.d\/mirrorlist/}' "$pacman_conf"; then
+      log_success "Multilib repository enabled in ${pacman_conf}."
+      log_info "Updating pacman databases to reflect changes..."
+      if sudo pacman -Syy --noconfirm; then
+        log_success "Pacman databases updated."
+      else
+        log_error "Failed to update pacman databases after multilib change."
+      fi
+    else
+      log_error "Failed to enable multilib repository in ${pacman_conf}."
+    fi
+  fi
+}
+
+# Function: update_system
+# Description: Updates the entire system using pacman.
+update_system() {
+  print_section_header "Updating System"
+  log_status "Running pacman -Syu --noconfirm..."
+  if sudo pacman -Syu --noconfirm; then
+    log_success "System updated successfully."
+  else
+    log_error "System update failed."
+    exit 1 # Critical failure, exit script
+  fi
+}
+
+# Function: optimize_mirrors
+# Description: Installs reflector and optimizes pacman mirrorlist.
+optimize_mirrors() {
+  print_section_header "Optimizing Pacman Mirrors"
+  log_status "Installing reflector if not already installed..."
+  # install_package_pacman is used here as reflector is a core Pacman package
+  install_package_pacman "reflector"
+
+  log_status "Optimizing mirrorlist for Germany, Netherlands, and France..."
+  # Ensure reflector is installed before using it, check command_exists again as install_package_pacman might fail
+  if command_exists "reflector"; then
+    if sudo reflector --country Germany,Netherlands,France --age 24 --protocol https --sort rate --save /etc/pacman.d/mirrorlist; then
+      log_success "Mirrorlist optimized and saved to /etc/pacman.d/mirrorlist."
+      log_info "Updating pacman databases with new mirrorlist..."
+      if sudo pacman -Syy --noconfirm; then
+        log_success "Pacman databases updated successfully."
+      else
+        log_error "Failed to update pacman databases after mirrorlist optimization."
+      fi
+    else
+      log_error "Failed to optimize mirrorlist using reflector."
+    fi
+  else
+    log_error "Reflector is not installed, skipping mirror optimization."
+  fi
+}
+
+# Function: install_yay
+# Description: Installs the 'yay' AUR helper if it's not already present.
+install_yay() {
+  print_section_header "Installing YAY AUR Helper"
+  if command_exists "yay"; then
+    log_success "yay is already installed."
+    return 0
+  fi
+
+  log_status "yay not found. Attempting to install..."
+
+  # Ensure git and base-devel are installed for yay compilation
+  log_status "Ensuring git and base-devel are installed (required for AUR helpers)..."
+  install_package_pacman "git" || {
+    log_error "Failed to install git."
+    return 1
+  }
+  install_package_pacman "base-devel" || {
+    log_error "Failed to install base-devel."
+    return 1
+  }
+
+  local yay_build_dir="${HOME}/.cache/yay-build"
+  log_info "Cloning yay repository to ${yay_build_dir}..."
+  mkdir -p "$yay_build_dir"
+  if ! git clone https://aur.archlinux.org/yay.git "$yay_build_dir"; then
+    log_error "Failed to clone yay repository."
+    return 1
+  fi
+
+  log_info "Building and installing yay from source..."
+  (
+    cd "$yay_build_dir" || {
+      log_error "Failed to enter yay build directory."
+      return 1
+    }
+    if makepkg -si --noconfirm; then
+      log_success "yay installed successfully."
+    else
+      log_error "Failed to build and install yay."
+      return 1
+    fi
+  )
+  # Check if yay was actually installed and cleanup
+  if command_exists "yay"; then
+    log_info "Cleaning up yay build directory: ${yay_build_dir}"
+    rm -rf "$yay_build_dir"
+    return 0
+  else
+    log_error "yay command not found after installation attempt. Manual intervention may be needed."
+    return 1
+  fi
+}
+
+# Function: install_all_packages
+# Description: Reads package lists and installs them.
+install_all_packages() {
+  print_section_header "Installing All Packages"
+  local all_packages_file="${PACKAGES_DIR}/packages.txt"
+  local gpu_packages_file="${PACKAGES_DIR}/${GPU_TYPE}.txt"
+  local package_list=()
+
+  log_status "Loading main packages from ${all_packages_file}..."
+  if [[ -f "$all_packages_file" ]]; then
+    mapfile -t package_list <"$all_packages_file"
+  else
+    log_error "Main packages file not found: ${all_packages_file}. Cannot proceed with package installation."
+    exit 1 # Critical failure
+  fi
+
+  log_status "Loading GPU-specific packages from ${gpu_packages_file} for ${GPU_TYPE}..."
+  if [[ -f "$gpu_packages_file" ]]; then
+    # Append GPU packages to the existing list
+    mapfile -t -O "${#package_list[@]}" package_list <"$gpu_packages_file"
+  else
+    log_warn "GPU-specific packages file not found: ${gpu_packages_file}. Skipping GPU package installation."
+  fi
+
+  if [[ ${#package_list[@]} -eq 0 ]]; then
+    log_error "No packages to install found in any file. Check package files."
+    return 1
+  fi
+
+  log_info "Total unique packages to attempt installation: ${#package_list[@]}"
+
+  # Install packages one by one
+  for package in "${package_list[@]}"; do
+    package=$(echo "$package" | xargs)               # Trim leading/trailing whitespace
+    if [[ -z "$package" || "$package" =~ ^# ]]; then # Skip empty lines and comments
+      log_debug "Skipping empty or commented line: '$package'"
+      continue
+    fi
+    log_status "Attempting to install: ${package}"
+    if ! install_package "$package"; then # `install_package` uses `yay`
+      FAILED_PACKAGES+=("$package")
+      log_error "Failed to install ${package}. Added to failed list."
+    fi
+  done
+
+  # Report failed packages at the end
+  if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
+    log_warn "--------------------------------------------------------------------------------"
+    log_warn " The following packages failed to install. Please review the log for errors and consider manual installation:"
+    for failed_pkg in "${FAILED_PACKAGES[@]}"; do
+      log_error " - ${failed_pkg}"
+      _log_message "FAIL" "${RED}" " X " "${failed_pkg}" # This line is for explicit red color in log
+    done
+    log_warn "--------------------------------------------------------------------------------"
+  else
+    log_success "All requested packages installed successfully!"
+  fi
+}
+
+# Function: enable_services
+# Description: Enables system and user services.
+enable_services() {
+  print_section_header "Enabling System and User Services"
+  local system_services_file="${PACKAGES_DIR}/system_services.txt"
+  local user_services_file="${PACKAGES_DIR}/user_services.txt"
+
+  # System services
+  log_status "Enabling system services..."
+  if [[ -f "$system_services_file" ]]; then
+    while IFS= read -r service; do
+      service=$(echo "$service" | xargs)               # Trim whitespace
+      if [[ -z "$service" || "$service" =~ ^# ]]; then # Skip empty lines and comments
+        continue
+      fi
+      if sudo systemctl is-enabled "$service" &>/dev/null; then
+        log_info "System service ${service} is already enabled."
+      else
+        log_info "Enabling system service: ${service}"
+        if sudo systemctl enable --now "$service"; then
+          log_success "${service} enabled and started."
+        else
+          log_warn "Failed to enable/start system service: ${service}"
+        fi
+      fi
+    done <"$system_services_file"
+  else
+    log_warn "System services file not found: ${system_services_file}. Skipping system service enablement."
+  fi
+
+  # User services
+  log_status "Enabling user services..."
+  if [[ -f "$user_services_file" ]]; then
+    while IFS= read -r service; do
+      service=$(echo "$service" | xargs)               # Trim whitespace
+      if [[ -z "$service" || "$service" =~ ^# ]]; then # Skip empty lines and comments
+        continue
+      fi
+      if systemctl --user is-enabled "$service" &>/dev/null; then
+        log_info "User service ${service} is already enabled."
+      else
+        log_info "Enabling user service: ${service}"
+        if systemctl --user enable --now "$service"; then
+          log_success "${service} enabled and started for user."
+        else
+          log_warn "Failed to enable/start user service: ${service}"
+        fi
+      fi
+    done <"$user_services_file"
+  else
+    log_warn "User services file not found: ${user_services_file}. Skipping user service enablement."
+  fi
+}
+
+# Function: install_uv
+# Description: Installs the uv Python package manager.
+install_uv() {
+  print_section_header "Installing UV Python Package Manager"
+  if command_exists "uv"; then
+    log_success "UV is already installed."
+    return 0
+  fi
+
+  log_status "Downloading and installing uv..."
+  if curl -LsSf https://astral.sh/uv/install.sh | sh; then
+    log_success "UV installed successfully."
+    # UV installer places binaries in ~/.cargo/bin by default, similar to rustup.
+    # It usually advises adding to PATH. For current session:
+    if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
+      log_warn "Note: UV might not be immediately available in PATH for the current session."
+      log_warn "You may need to source \$HOME/.cargo/env or restart your terminal."
+    fi
+  else
+    log_error "Failed to install uv."
+  fi
+}
+
+# Function: install_mpv_uosc
+# Description: Installs/updates the uosc script for mpv.
+install_mpv_uosc() {
+  print_section_header "Installing/Updating uosc for MPV"
+  log_status "Checking for existing uosc installation..."
+
+  if [ ! -d "$MPV_CONFIG_DIR" ]; then
+    log_info "Creating MPV config directory: $MPV_CONFIG_DIR"
+    mkdir -p "$MPV_CONFIG_DIR" || {
+      log_error "Failed to create MPV config directory."
+      return 1
+    }
+  fi
+
+  if [ ! -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
+    mkdir -p "$MPV_CONFIG_DIR/scripts" || {
+      log_error "Failed to create MPV scripts directory."
+      return 1
+    }
+    log_info "Running uosc unix installer script..."
+    # Run the installer script. Note: This script typically interacts with the user
+    # and creates files in ~/.config/mpv. If it fails, check its output.
+    if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tomasklaen/uosc/HEAD/installers/unix.sh)"; then
+      if [ -f "$MPV_CONFIG_DIR/scripts/uosc.lua" ]; then
+        log_success "uosc installed successfully."
+      else
+        log_warning "uosc installation script ran, but uosc.lua not found in expected location ($MPV_CONFIG_DIR/scripts/uosc.lua). Please check manually."
+      fi
+    else
+      log_error "uosc installation script failed or encountered issues."
+    fi
+  else
+    log_success "uosc.lua already present. Skipping uosc installation."
+  fi
+}
+
+# Function: install_rustup
+# Description: Installs the Rust toolchain manager rustup.
+install_rustup() {
+  print_section_header "Installing Rustup"
+  if command_exists "rustup"; then
+    log_success "Rustup is already installed."
+    return 0
+  fi
+
+  log_status "Downloading and installing rustup..."
+  # The --no-modify-path flag ensures it doesn't automatically add to shell profile files.
+  # User will manually manage PATH if needed or source ~/.cargo/env
+  if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable; then
+    log_success "Rustup installed successfully."
+    log_warn "Note: Rustup did NOT modify your shell's PATH (--no-modify-path was used)."
+    log_warn "You may need to manually add ~/.cargo/bin to your PATH, or source \"\$HOME/.cargo/env\" in new sessions."
+  else
+    log_error "Failed to install rustup."
+  fi
+}
+
+# --- Main Script Execution ---
+
+main() {
+  log_status "Starting Arch Linux system setup script..."
+
+  check_prerequisites
+  ensure_sudo
+  ask_gpu
+  enable_multilib
+  update_system
+  optimize_mirrors
+  install_yay
+  install_all_packages # This handles both main and GPU-specific packages
+  enable_services
+  install_uv
+  install_mpv_uosc
+  install_rustup
+
+  log_success "System setup script finished."
+  if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
+    log_warn "Summary: Some packages failed to install. Please review the log and the following list for manual intervention:"
+    for failed_pkg in "${FAILED_PACKAGES[@]}"; do
+      log_error " - ${failed_pkg}"
+    done
+    log_warn "All other steps completed, but manual intervention might be required for the listed failures."
+  else
+    log_success "Summary: All steps completed and all packages installed successfully!"
+  fi
+
+  log_info "A system reboot is highly recommended to apply all changes (especially for GPU drivers)."
+}
+
+# Call the main function
+main
