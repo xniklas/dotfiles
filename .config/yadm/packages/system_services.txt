@@ -1,4 +1,5 @@
 sddm.service
+dbus-broker.service
 NetworkManager.service
 bluetooth.service
 ufw.service

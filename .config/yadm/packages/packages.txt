@@ -23,6 +23,7 @@ cups-browsed
 cups-filters
 cups-pdf
 curl
+dbus-broker
 dolphin
 dolphin-plugins
 duf
