@@ -203,17 +203,17 @@ install_packages() {
   print_status "Installing packages..."
 
   # Install main packages
-  install_packages_from_file "packages/packages.txt" "main packages"
+  install_packages_from_file "$HOME/.config/yadm/packages/packages.txt" "main packages"
 
   # Install GPU-specific packages if selected
   if [[ -n "$GPU_PACKAGE" ]]; then
-    install_packages_from_file "packages/$GPU_PACKAGE" "GPU packages"
+    install_packages_from_file "$HOME/.config/yadm/packages/$GPU_PACKAGE" "GPU packages"
   fi
 }
 
 # Function to enable system services
 enable_system_services() {
-  local file="packages/system_services.txt"
+  local file="$HOME/.config/yadm/packages/system_services.txt"
 
   if [[ ! -f "$file" ]]; then
     print_warning "System services file $file not found, skipping"
@@ -240,7 +240,7 @@ enable_system_services() {
 
 # Function to enable user services
 enable_user_services() {
-  local file="packages/user_services.txt"
+  local file="$HOME/.config/yadm/packages/user_services.txt"
 
   if [[ ! -f "$file" ]]; then
     print_warning "User services file $file not found, skipping"
