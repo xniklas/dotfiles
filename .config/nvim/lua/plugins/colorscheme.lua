@@ -1,6 +1,7 @@
 return {
   -- add catppuccin
   { "catppuccin/nvim" },
+  { "Mofiqul/dracula.nvim" },
 
   {
     dir = "/home/raydn/dev/neovim/strix.nvim",
@@ -17,7 +18,9 @@ return {
     "LazyVim/LazyVim",
     opts = {
       -- colorscheme = "catppuccin",
-      colorscheme = "strix-night",
+      -- colorscheme = "strix-night",
+      -- colorscheme = "dracula",
+      colorscheme = "tokyonight-night",
     },
   },
 }
