@@ -51,3 +51,7 @@ command = "nm-connection-editor"
 animation = "fromRight"
 margin = 20
 lazy = true
+
+[scratchpads.spotify]
+command = "spotify"
+lazy = true

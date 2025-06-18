@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Core session utilities (session slice)
-uwsm app -s s -- "$HOME"/.config/hypr/scripts/portal &
+# portals have a .service that will be managed by uwsm
+# uwsm app -s s -- "$HOME"/.config/hypr/scripts/portal &
 uwsm app -s s -- wl-paste --watch cliphist store &
 
 # Background services (background slice)
